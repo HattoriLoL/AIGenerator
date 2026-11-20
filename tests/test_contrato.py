@@ -262,6 +262,44 @@ class Documentos(unittest.TestCase):
                 self.assertTrue("`%s`" % campo in texto, "docs/contrato.md não cita o campo " + campo)
 
 
+class Publico(unittest.TestCase):
+    """O repositório é público (AGENTS.md, "Public repository"): nenhum arquivo versionado é imagem, peso de modelo,
+    relatório ou registro de geração, e o verificador de segredos e o .gitignore recusam todos eles pelo nome."""
+
+    PROIBIDOS = ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp", "*.avif", "*.safetensors", "*.ckpt", "*.pt",
+                 "*.pth", "*.onnx", "*.gguf", "*.aigen.json", "aigen-web.log")
+
+    def versionados(self):
+        ls = Isolamento.git("ls-tree", "-r", "-z", "--name-only", Isolamento.REV) if Isolamento.REV else \
+            Isolamento.git("ls-files", "-z")
+        if ls is None:
+            self.skipTest("sem o git")
+        return [c for c in ls.split("\0") if c]
+
+    def test_nenhum_arquivo_versionado_e_proibido(self):
+        import fnmatch
+        achados = [c for c in self.versionados()
+                   if any(fnmatch.fnmatch(os.path.basename(c).lower(), p) for p in self.PROIBIDOS)]
+        self.assertEqual(achados, [])
+
+    def test_o_verificador_de_segredos_recusa_pelo_nome(self):
+        sys.path.insert(0, os.path.join(RAIZ, "bin"))
+        try:
+            import verificar_segredos
+        finally:
+            sys.path.pop(0)
+        for p in self.PROIBIDOS:
+            exemplo = p.replace("*", "x")
+            self.assertTrue(verificar_segredos.e_proibido(os.path.join("qualquer", "pasta", exemplo)), exemplo)
+        self.assertFalse(verificar_segredos.e_proibido("examples/pedido.json"))
+
+    def test_o_gitignore_ignora(self):
+        with open(os.path.join(RAIZ, ".gitignore"), encoding="utf-8") as f:
+            linhas = {l.strip() for l in f}
+        for p in self.PROIBIDOS:
+            self.assertIn(p, linhas, ".gitignore não ignora " + p)
+
+
 class Isolamento(unittest.TestCase):
     """Nada de um projeto privado do dono do clone entra no repositório público. Os termos ficam numa lista local,
     fora do git (.aigen-proibidos: um termo por linha, sem diferença de maiúsculas, # comenta); sem ela, os casos são

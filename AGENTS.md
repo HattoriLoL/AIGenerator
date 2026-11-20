@@ -73,6 +73,24 @@ the text `scan-secrets: ok` on that line, amending the commit that brought it (e
 - **The stage sequence is checked before it runs** (`etapas.conferir`), and the stage table in
   `docs/como-funciona.md` is the one the stages declare (checked by a test).
 
+## Public repository: nothing private, no images
+**This repository is public**, or may become public at any time with its whole history. Everything committed, and
+every commit message, pull request and issue, can be read by anyone and stays in the history even after it is
+deleted. So nothing goes in that should not be seen by anyone:
+- **No images of any kind**: no generated outputs, no screenshots, no example pictures (`.png`, `.jpg`, `.jpeg`,
+  `.webp`, `.gif`, `.bmp`, `.avif`). What the tool produces is the user's, and Pony can produce adult content. The
+  docs describe the outputs in words.
+- **No generation records**: no `.aigen.json` reports, `lote.aigen.json` summaries or `aigen-web.log` (they hold the
+  user's prompts), and no character sheets other than generic examples in `examples/`.
+- **No model weights** (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.onnx`, `.gguf`).
+- **No secrets** (Civitai, Hugging Face or GitHub tokens, API keys, passwords) and **no personal data**: no paths from
+  someone's machine, no e-mail other than a GitHub `noreply` one, no names of real people.
+- These files are refused by name by `bin/verificar_segredos.py` (and so by the pre-push hook), ignored by
+  `.gitignore`, and checked in the versioned tree by `tests/test_contrato.py` (class `Publico`).
+- **If something slips into a commit, do not push it**: amend or rebase that commit before pushing. After a push,
+  deleting the file is not enough (it stays in the history): tell the owner, who decides whether to rewrite the
+  history and revoke what leaked (a token must be revoked in any case).
+
 ## Isolation: AIGenerator knows no project that uses it
 - **Nothing project-specific goes into the repository**: not the name of a game, a character, a tool or a private
   repository; not a value taken from one project as a default; not a path from someone's machine. This covers the
