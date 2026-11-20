@@ -1,7 +1,0 @@
-# Uma ficha de personagem (docs/fichas.md). As tags descrevem o que não muda de uma imagem para outra; a cena vai no
-# prompt do pedido. Personagem original, só para o exemplo.
-versao_ficha = 1
-nome = "Exemplo"
-tags = "1girl, solo, long silver hair, straight hair, red eyes, black hoodie, white pleated skirt"
-negativo = "monochrome, 3d"
-notas = "Uma personagem genérica para testar o fluxo; troque pelas suas fichas em personagens/."

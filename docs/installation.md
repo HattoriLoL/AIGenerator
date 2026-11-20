@@ -8,12 +8,13 @@ Requirements: Linux, an NVIDIA GPU (16 GB is comfortable for SDXL with hires fix
 it) and [uv](https://docs.astral.sh/uv/).
 
 ```
-bin/instalar.sh
+bin/install.sh
 ```
 
 It runs `uv sync`, which creates `.venv/` with Python 3.12 (from `.python-version`) and installs the dependencies of
 `pyproject.toml`, with PyTorch built for CUDA 12.8 (RTX 50 cards need it; older cards work with it too). It then
-creates the model folders and prints whether PyTorch sees the GPU. Nothing else is downloaded.
+creates the model, `characters/` and `output/` folders and prints whether PyTorch sees the GPU. Nothing else is
+downloaded.
 
 To use another Python environment, set `AIGEN_PYTHON` to its interpreter: the launchers use it instead of `.venv/`.
 
@@ -23,11 +24,11 @@ To use another Python environment, set `AIGEN_PYTHON` to its interpreter: the la
 |---|---|---|
 | The checkpoint: Pony Diffusion V6 XL, or another SDXL model | anywhere; set its path in `config.local.ini` | download it from the model page (Civitai may ask for an account) |
 | LoRAs (optional) | `models/loras/` (subfolders allowed) | `.safetensors` files trained for Pony / SDXL |
-| The upscaler for the hires fix | `models/upscalers/RealESRGAN_x4plus_anime_6B.pth` | `bin/baixar_auxiliares.sh` |
-| The face detector for the face fix | `models/detectors/lbpcascade_animeface.xml` | `bin/baixar_auxiliares.sh` |
+| The upscaler for the hires fix | `models/upscalers/RealESRGAN_x4plus_anime_6B.pth` | `bin/download_extras.sh` |
+| The face detector for the face fix | `models/detectors/lbpcascade_animeface.xml` | `bin/download_extras.sh` |
 
-`bin/baixar_auxiliares.sh` downloads the two auxiliary files (both with licenses that allow commercial use; see
-[licencas.md](licencas.md)) and skips the ones already there.
+`bin/download_extras.sh` downloads the two auxiliary files (both with licenses that allow commercial use; see
+[licenses.md](licenses.md)) and skips the ones already there.
 
 The first time a checkpoint is loaded, diffusers downloads the SDXL pipeline configuration files (a few kilobytes,
 from Hugging Face) and caches them.
@@ -38,7 +39,7 @@ from Hugging Face) and caches them.
 same sections and keys:
 
 ```ini
-[modelos]
+[models]
 checkpoint = models/checkpoints/ponyDiffusionV6XL.safetensors
 ```
 
@@ -46,14 +47,14 @@ Or in environment variables, which win over both files:
 
 | Variable | Key | Default |
 |---|---|---|
-| `AIGEN_CHECKPOINT` | `[modelos] checkpoint` | none |
-| `AIGEN_VAE` | `[modelos] vae` | none (the checkpoint's own VAE) |
-| `AIGEN_LORAS` | `[modelos] pasta_loras` | `models/loras` |
-| `AIGEN_UPSCALER` | `[modelos] upscaler` | `models/upscalers/RealESRGAN_x4plus_anime_6B.pth` |
-| `AIGEN_DETECTOR_ROSTO` | `[modelos] detector_rosto` | `models/detectors/lbpcascade_animeface.xml` |
-| `AIGEN_FICHAS` | `[pastas] fichas` | `personagens` |
-| `AIGEN_SAIDA` | `[pastas] saida` | `saida` (where the web interface writes) |
-| `AIGEN_PORTA` | `[web] porta` | `7860` |
+| `AIGEN_CHECKPOINT` | `[models] checkpoint` | none |
+| `AIGEN_VAE` | `[models] vae` | none (the checkpoint's own VAE) |
+| `AIGEN_LORAS` | `[models] loras_folder` | `models/loras` |
+| `AIGEN_UPSCALER` | `[models] upscaler` | `models/upscalers/RealESRGAN_x4plus_anime_6B.pth` |
+| `AIGEN_FACE_DETECTOR` | `[models] face_detector` | `models/detectors/lbpcascade_animeface.xml` |
+| `AIGEN_SHEETS` | `[folders] sheets` | `characters` |
+| `AIGEN_OUTPUT` | `[folders] output` | `output` (where the web interface writes) |
+| `AIGEN_PORT` | `[web] port` | `7860` |
 
-Relative paths are relative to the repository root; `~` is the home folder. `models/`, `personagens/` and `saida/`
+Relative paths are relative to the repository root; `~` is the home folder. `models/`, `characters/` and `output/`
 are ignored by git.

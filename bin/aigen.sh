@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Gera imagens (docs/opcoes.md).
+# Generates images (docs/options.md).
 #     bin/aigen.sh --help
 . "$(dirname "${BASH_SOURCE[0]}")/_python.sh"
 [ -n "$PY" ] || exit 2
-exec "$PY" -m aigen.gerar "$@"
+exec "$PY" -m aigen.generate "$@"

@@ -1,73 +1,77 @@
-"""Os LoRAs: achar o arquivo na pasta, ler a lista "nome:peso" da linha de comando e da tela, e ligar no pipeline.
+"""The LoRAs: finding the file in the folder, reading the "name:weight" list from the command line and the web
+interface, and turning them on in the pipeline.
 
-Só a etapa usa o diffusers (pelo pipeline que recebe); o resto é puro.
+Only the stage uses diffusers (through the pipeline it receives); the rest is pure.
 """
 import os
 import re
 
-from aigen import contrato, etapas
+from aigen import contract, stages
 
-EXTENSAO = ".safetensors"
+EXTENSION = ".safetensors"
 
 
-def arquivo(pasta, nome):
-    """O arquivo do LoRA `nome` na pasta (com ou sem a extensão .safetensors), ou None."""
-    for candidato in (nome, nome + EXTENSAO):
-        caminho = os.path.join(pasta, candidato)
-        if candidato.endswith(EXTENSAO) and os.path.isfile(caminho):
-            return caminho
+def find_file(folder, name):
+    """The file of the LoRA `name` in the folder (with or without the .safetensors extension), or None."""
+    for candidate in (name, name + EXTENSION):
+        path = os.path.join(folder, candidate)
+        if candidate.endswith(EXTENSION) and os.path.isfile(path):
+            return path
     return None
 
 
-def listar(pasta):
-    """Os nomes (sem .safetensors) dos LoRAs da pasta e das subpastas, em ordem; [] se a pasta não existe."""
-    if not os.path.isdir(pasta):
+def list_loras(folder):
+    """The names (without .safetensors) of the LoRAs in the folder and its subfolders, sorted; [] if the folder does not
+    exist."""
+    if not os.path.isdir(folder):
         return []
-    nomes = []
-    for dirpath, _, arquivos in os.walk(pasta):
-        for n in arquivos:
-            if n.endswith(EXTENSAO):
-                relativo = os.path.relpath(os.path.join(dirpath, n), pasta)
-                nomes.append(relativo[:-len(EXTENSAO)].replace(os.sep, "/"))
-    return sorted(nomes)
+    names = []
+    for dirpath, _, files in os.walk(folder):
+        for n in files:
+            if n.endswith(EXTENSION):
+                relative = os.path.relpath(os.path.join(dirpath, n), folder)
+                names.append(relative[:-len(EXTENSION)].replace(os.sep, "/"))
+    return sorted(names)
 
 
-def ler_lista(texto):
-    """A lista de LoRAs de um texto "nome:peso", um por linha ou separados por vírgula; sem ":peso", o peso é 1."""
+def parse_list(text):
+    """The LoRA list of a "name:weight" text, one per line or comma-separated; without ":weight", the weight is 1."""
     loras = []
-    for item in re.split(r"[\n,]", texto or ""):
+    for item in re.split(r"[\n,]", text or ""):
         item = item.strip()
         if not item:
             continue
-        nome, _, peso = item.rpartition(":") if ":" in item else (item, "", "1")
+        name, _, weight = item.rpartition(":") if ":" in item else (item, "", "1")
         try:
-            valor = float(peso)
+            value = float(weight)
         except ValueError:
-            raise contrato.ErroPedido("o LoRA '%s' tem o peso '%s'; o esperado é um número (nome:peso)" % (item, peso))
-        loras.append({"nome": nome.strip(), "peso": valor})
-    return contrato.conferir_loras(loras, "a lista de LoRAs")
+            raise contract.RequestError("the LoRA '%s' has the weight '%s'; expected a number (name:weight)"
+                                        % (item, weight))
+        loras.append({"name": name.strip(), "weight": value})
+    return contract.check_loras(loras, "the LoRA list")
 
 
-def nome_adaptador(nome):
-    """Um nome de adaptador que o diffusers aceita (sem pontos nem barras)."""
-    return "lora_" + re.sub(r"[^0-9A-Za-z_]", "_", nome)
+def adapter_name(name):
+    """An adapter name diffusers accepts (no dots or slashes)."""
+    return "lora_" + re.sub(r"[^0-9A-Za-z_]", "_", name)
 
 
-@etapas.declarar(le=("pipe", "loras", "sessao", "cfg", "rel"), grava=("loras_ativas",))
-def etapa(t):
-    """Liga os LoRAs pedidos com os seus pesos. Os carregados ficam na sessão: só recarrega quando a lista muda."""
-    pipe, sessao = t.pipe, t.sessao
-    nomes = [l["nome"] for l in t.loras]
-    if sorted(nomes) != sorted(sessao.loras_carregadas):
-        if sessao.loras_carregadas:
+@stages.declare(reads=("pipe", "loras", "session", "cfg", "report"), writes=("active_loras",))
+def stage(t):
+    """Turns on the requested LoRAs with their weights. The loaded ones stay in the session: they are reloaded only
+    when the list changes."""
+    pipe, session = t.pipe, t.session
+    names = [l["name"] for l in t.loras]
+    if sorted(names) != sorted(session.loaded_loras):
+        if session.loaded_loras:
             pipe.unload_lora_weights()
-            sessao.loras_carregadas = ()
-        for nome in nomes:
-            caminho = arquivo(t.cfg.pasta_loras, nome)
-            pipe.load_lora_weights(os.path.dirname(caminho), weight_name=os.path.basename(caminho),
-                                   adapter_name=nome_adaptador(nome))
-        sessao.loras_carregadas = tuple(nomes)
-    if nomes:
-        pipe.set_adapters([nome_adaptador(n) for n in nomes], adapter_weights=[l["peso"] for l in t.loras])
-    t.loras_ativas = [dict(l) for l in t.loras]
-    t.rel["loras"] = t.loras_ativas
+            session.loaded_loras = ()
+        for name in names:
+            path = find_file(t.cfg.loras_folder, name)
+            pipe.load_lora_weights(os.path.dirname(path), weight_name=os.path.basename(path),
+                                   adapter_name=adapter_name(name))
+        session.loaded_loras = tuple(names)
+    if names:
+        pipe.set_adapters([adapter_name(n) for n in names], adapter_weights=[l["weight"] for l in t.loras])
+    t.active_loras = [dict(l) for l in t.loras]
+    t.report["loras"] = t.active_loras

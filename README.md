@@ -8,7 +8,7 @@ interface, with character sheets, LoRAs, hires fix and face fix.
 the scene tags, an optional character sheet, the size, the sampler, the seed, LoRAs and the optional passes.
 
 - **Character sheets:** a small TOML file per character keeps the tags that do not change (hair, eyes, outfit, the
-  character's LoRA), so each request only describes the scene. See [docs/fichas.md](docs/fichas.md).
+  character's LoRA), so each request only describes the scene. See [docs/sheets.md](docs/sheets.md).
 - **Anime by default, Pony-aware prompts:** the `score_9, score_8_up, ...` quality tags, the `source_anime` style tag
   and `rating_safe` (with the other sources, 3D, realism and explicit ratings in the negative) are added for you;
   each one can be turned off. Tags are not repeated, and AUTOMATIC1111 weights (`(tag:1.2)`) and long prompts work.
@@ -17,50 +17,49 @@ the scene tags, an optional character sheet, the size, the sampler, the seed, Lo
 - **Face fix** (off by default): find the anime faces, redraw each one at 1024 px and paste it back.
 - **Reproducible outputs:** every PNG carries its full request (and the AUTOMATIC1111 `parameters` text that other
   tools read), and a report with the seed and the time of each stage goes next to it. Nothing is ever overwritten.
-- **Scriptable:** documented exit codes, `ERRO:` messages, versioned formats, and a batch mode that loads the model
+- **Scriptable:** documented exit codes, `ERROR:` messages, versioned formats, and a batch mode that loads the model
   once for a whole folder of requests.
 
 ## Requirements and installation
 1. Linux with an NVIDIA GPU (16 GB is comfortable; RTX 50 cards are supported through PyTorch for CUDA 12.8) and
    [uv](https://docs.astral.sh/uv/).
-2. `bin/instalar.sh` creates the environment in `.venv/` (Python 3.12 and the dependencies of `pyproject.toml`).
+2. `bin/install.sh` creates the environment in `.venv/` (Python 3.12 and the dependencies of `pyproject.toml`).
 3. Download an SDXL checkpoint (Pony Diffusion V6 XL) and set its path in a `config.local.ini` (ignored by git):
    ```ini
-   [modelos]
+   [models]
    checkpoint = /path/to/ponyDiffusionV6XL.safetensors
    ```
-4. Optional: `bin/baixar_auxiliares.sh` downloads the upscaler (hires fix) and the face detector (face fix).
+4. Optional: `bin/download_extras.sh` downloads the upscaler (hires fix) and the face detector (face fix).
 
-Details, all the settings and the environment variables: [docs/instalacao.md](docs/instalacao.md).
+Details, all the settings and the environment variables: [docs/installation.md](docs/installation.md).
 
 ## Running
 ```
 bin/aigen.sh output.png --prompt "1girl, solo, smile, school uniform, classroom"
-bin/aigen.sh output.png --ficha my_character --prompt "sitting, cafe, night" --hires --rosto
-bin/aigen.sh output.png --pedido request.json
-bin/aigen_lote.sh requests_folder output_folder
+bin/aigen.sh output.png --sheet my_character --prompt "sitting, cafe, night" --hires --face-fix
+bin/aigen.sh output.png --request request.json
+bin/aigen_batch.sh requests_folder output_folder
 bin/aigen_web.sh                                   (http://127.0.0.1:7860)
 ```
-`bin/instalar_atalho.sh` adds an "AIGenerator" shortcut to the application menu that opens the web interface
+`bin/install_shortcut.sh` adds an "AIGenerator" shortcut to the application menu that opens the web interface
 ([docs/web.md](docs/web.md)).
 Next to `output.png` you get `output.aigen.json` (the report). The exit code is 0 on success, 1 when the image could
-not be made and 2 when the request is wrong and nothing was done (the message starts with `ERRO:`; see
-[docs/contrato.md](docs/contrato.md)).
+not be made and 2 when the request is wrong and nothing was done (the message starts with `ERROR:`; see
+[docs/contract.md](docs/contract.md)).
 
-The option names are in Portuguese (for example `--passos` for the steps and `--ficha` for the character sheet); all
-of them are explained in English in [docs/opcoes.md](docs/opcoes.md).
+All the options are explained in [docs/options.md](docs/options.md).
 
 ## Documentation
 | File | Topic |
 |---|---|
-| [docs/instalacao.md](docs/instalacao.md) | Installation, the models and the configuration |
-| [docs/opcoes.md](docs/opcoes.md) | All options, batch mode and examples |
-| [docs/contrato.md](docs/contrato.md) | The contract: the request, the outputs, the versions and the exit codes |
-| [docs/fichas.md](docs/fichas.md) | Character sheets |
+| [docs/installation.md](docs/installation.md) | Installation, the models and the configuration |
+| [docs/options.md](docs/options.md) | All options, batch mode and examples |
+| [docs/contract.md](docs/contract.md) | The contract: the request, the outputs, the versions and the exit codes |
+| [docs/sheets.md](docs/sheets.md) | Character sheets |
 | [docs/web.md](docs/web.md) | The web interface |
-| [docs/como-funciona.md](docs/como-funciona.md) | The stages: prompt, model, LoRAs, generation, hires fix, face fix, output |
-| [docs/limitacoes.md](docs/limitacoes.md) | What is not supported and what needs care |
-| [docs/licencas.md](docs/licencas.md) | Third-party licenses and the models' licenses |
+| [docs/how-it-works.md](docs/how-it-works.md) | The stages: prompt, model, LoRAs, generation, hires fix, face fix, output |
+| [docs/limitations.md](docs/limitations.md) | What is not supported and what needs care |
+| [docs/licenses.md](docs/licenses.md) | Third-party licenses and the models' licenses |
 | [examples/README.md](examples/README.md) | The example request and character sheet |
 
 ## Folders
@@ -71,7 +70,7 @@ of them are explained in English in [docs/opcoes.md](docs/opcoes.md).
 | `tests/` | Automated tests (no GPU, no image generation) |
 | `examples/` | An example request and character sheet |
 | `docs/` | The documentation, one file per topic |
-| `models/`, `personagens/`, `saida/` | Models, your character sheets and the outputs (created by the installer, ignored by git) |
+| `models/`, `characters/`, `output/` | Models, your character sheets and the outputs (created by the installer, ignored by git) |
 
 ## Tests
 `tests/run.sh` runs the whole suite in a few seconds with any Python 3.11+, without PyTorch or a GPU: the contract,
@@ -80,16 +79,16 @@ checking images is done by a person.
 
 ## Status
 Early: version 0.1, used on Linux with an NVIDIA RTX 50-series GPU (16 GB). The formats are versioned
-([docs/contrato.md](docs/contrato.md)) but may still change before 1.0.
+([docs/contract.md](docs/contract.md)) but may still change before 1.0.
 
 ## Content
 Pony Diffusion XL can produce adult content. AIGenerator blocks explicit ratings by default (`rating_safe` in the
-prompt, the explicit ratings in the negative; see [docs/contrato.md](docs/contrato.md)), but no prompt-based filter
+prompt, the explicit ratings in the negative; see [docs/contract.md](docs/contract.md)), but no prompt-based filter
 is perfect. You are responsible for what you generate and for following the model's license.
 
 ## Limitations
 SDXL checkpoints only, Linux only, one generation at a time; the full list is in
-[docs/limitacoes.md](docs/limitacoes.md).
+[docs/limitations.md](docs/limitations.md).
 
 ## Support
 AIGenerator is provided as is, without guaranteed support. Issues and pull requests are welcome, but they may not get
@@ -97,4 +96,4 @@ a response.
 
 ## License
 AIGenerator is licensed under the [GNU General Public License v3.0](LICENSE). The repository contains no model
-weights; the models you download have their own licenses (see [docs/licencas.md](docs/licencas.md)).
+weights; the models you download have their own licenses (see [docs/licenses.md](docs/licenses.md)).

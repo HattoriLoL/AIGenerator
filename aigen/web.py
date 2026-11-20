@@ -1,11 +1,11 @@
-"""A interface web (Gradio): uma camada sobre o gerar.rodar, que escuta só em 127.0.0.1.
+"""The web interface (Gradio): a layer over generate.run, which listens only on 127.0.0.1.
 
-    bin/aigen_web.sh [--porta N]
+    bin/aigen_web.sh [--port N]
 
-Abas: Gerar (o pedido, as fichas, os LoRAs, o hires fix e a correção de rosto), Fichas (criar e editar), Galeria (as
-imagens da pasta de saída) e Ler PNG (refaz o pedido a partir de uma imagem do AIGenerator). Uma geração por vez.
-Cada falha vai, com o erro completo e o pedido, para o registro <pasta de saída>/aigen-web.log.
-O gradio e o PIL só são importados dentro das funções.
+Tabs: Generate (the request, the sheets, the LoRAs, the hires fix and the face fix), Sheets (create and edit), Gallery
+(the images of the output folder) and Read PNG (rebuilds the request from an AIGenerator image). One generation at a
+time. Each failure goes, with the full error and the request, to the log <output folder>/aigen-web.log.
+gradio and PIL are only imported inside the functions.
 """
 import datetime
 import json
@@ -14,258 +14,263 @@ import sys
 import threading
 import traceback
 
-from aigen import VERSAO, config, contrato, fichas, gerar, loras, metadados, modelo
+from aigen import VERSION, config, contract, generate, loras, metadata, model, sheets
 
-NENHUMA = "(nenhuma)"
-SEM_ESTILO = "nenhum"
-CAMPOS = ("ficha", "prompt", "negativo", "qualidade", "estilo", "bloquear_explicito", "largura", "altura", "passos",
-          "cfg", "amostrador", "seed", "quantidade", "loras", "hires", "hires_escala", "hires_forca", "hires_passos", "hires_upscaler", "rosto",
-          "rosto_forca", "rosto_passos", "rosto_margem", "rosto_prompt", "rosto_max")
-GALERIA_MAX = 60
-REGISTRO = "aigen-web.log"
-
-
-def registrar_falha(pasta, pedido, texto_erro, agora=None):
-    """Acrescenta ao registro da pasta de saída a hora, o pedido e o erro completo (o traceback); devolve o caminho."""
-    agora = agora or datetime.datetime.now()
-    os.makedirs(pasta, exist_ok=True)
-    caminho = os.path.join(pasta, REGISTRO)
-    with open(caminho, "a", encoding="utf-8") as f:
-        f.write("=== %s\npedido: %s\n%s\n" % (agora.isoformat(timespec="seconds"),
-                                            json.dumps(pedido, ensure_ascii=False, sort_keys=True), texto_erro.rstrip()))
-    return caminho
+NO_SHEET = "(none)"
+NO_STYLE = "none"
+FIELDS = ("sheet", "prompt", "negative", "quality", "style", "block_explicit", "width", "height", "steps", "cfg",
+          "sampler", "seed", "count", "loras", "hires", "hires_scale", "hires_strength", "hires_steps",
+          "hires_upscaler", "face_fix", "face_fix_strength", "face_fix_steps", "face_fix_margin", "face_fix_prompt",
+          "face_fix_max")
+GALLERY_MAX = 60
+LOG = "aigen-web.log"
 
 
-def pedido_da_tela(v):
-    """O pedido normalizado a partir dos valores da tela ({campo de CAMPOS: valor})."""
-    pedido = {"prompt": v["prompt"] or "", "negativo": v["negativo"] or "",
-              "ficha": None if v["ficha"] in (None, "", NENHUMA) else v["ficha"], "qualidade": bool(v["qualidade"]),
-              "estilo": None if v["estilo"] in (None, "", SEM_ESTILO) else v["estilo"],
-              "bloquear_explicito": bool(v["bloquear_explicito"]), "largura": int(v["largura"]),
-              "altura": int(v["altura"]), "passos": int(v["passos"]),
-              "cfg": float(v["cfg"]), "amostrador": v["amostrador"], "seed": int(v["seed"]),
-              "quantidade": int(v["quantidade"]), "loras": loras.ler_lista(v["loras"])}
+def log_failure(folder, request, error_text, now=None):
+    """Appends the time, the request and the full error (the traceback) to the output folder's log; returns its path."""
+    now = now or datetime.datetime.now()
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, LOG)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("=== %s\nrequest: %s\n%s\n" % (now.isoformat(timespec="seconds"),
+                                             json.dumps(request, ensure_ascii=False, sort_keys=True),
+                                             error_text.rstrip()))
+    return path
+
+
+def request_from_form(v):
+    """The normalized request from the form values ({field of FIELDS: value})."""
+    request = {"prompt": v["prompt"] or "", "negative": v["negative"] or "",
+               "sheet": None if v["sheet"] in (None, "", NO_SHEET) else v["sheet"], "quality": bool(v["quality"]),
+               "style": None if v["style"] in (None, "", NO_STYLE) else v["style"],
+               "block_explicit": bool(v["block_explicit"]), "width": int(v["width"]),
+               "height": int(v["height"]), "steps": int(v["steps"]),
+               "cfg": float(v["cfg"]), "sampler": v["sampler"], "seed": int(v["seed"]),
+               "count": int(v["count"]), "loras": loras.parse_list(v["loras"])}
     if v["hires"]:
-        pedido["hires"] = {"escala": float(v["hires_escala"]), "forca": float(v["hires_forca"]),
-                           "passos": int(v["hires_passos"]), "upscaler": v["hires_upscaler"]}
-    if v["rosto"]:
-        pedido["rosto"] = {"forca": float(v["rosto_forca"]), "passos": int(v["rosto_passos"]),
-                           "margem": float(v["rosto_margem"]), "prompt": v["rosto_prompt"] or "",
-                           "max_rostos": int(v["rosto_max"])}
-    return contrato.normalizar(pedido, "o pedido da tela")
+        request["hires"] = {"scale": float(v["hires_scale"]), "strength": float(v["hires_strength"]),
+                            "steps": int(v["hires_steps"]), "upscaler": v["hires_upscaler"]}
+    if v["face_fix"]:
+        request["face_fix"] = {"strength": float(v["face_fix_strength"]), "steps": int(v["face_fix_steps"]),
+                               "margin": float(v["face_fix_margin"]), "prompt": v["face_fix_prompt"] or "",
+                               "max_faces": int(v["face_fix_max"])}
+    return contract.normalize(request, "the request from the form")
 
 
-def tela_do_pedido(pedido):
-    """Os valores da tela ({campo: valor}) de um pedido normalizado (o contrário de pedido_da_tela)."""
-    h = pedido["hires"] or {k: c[2] for k, c in contrato.CAMPOS_HIRES.items()}
-    r = pedido["rosto"] or {k: c[2] for k, c in contrato.CAMPOS_ROSTO.items()}
-    v = {k: pedido[k] for k in ("prompt", "negativo", "qualidade", "largura", "altura", "passos", "cfg", "amostrador",
-                                "seed", "quantidade")}
-    v.update(estilo=pedido["estilo"] or SEM_ESTILO, bloquear_explicito=pedido["bloquear_explicito"])
-    v.update(ficha=pedido["ficha"] or NENHUMA, hires=bool(pedido["hires"]), rosto=bool(pedido["rosto"]),
-             loras="\n".join("%s:%g" % (l["nome"], l["peso"]) for l in pedido["loras"]))
-    v.update({"hires_" + k: h[k] for k in ("escala", "forca", "passos", "upscaler")})
-    v.update({"rosto_" + k: r[k] for k in ("forca", "passos", "margem", "prompt")}, rosto_max=r["max_rostos"])
+def form_from_request(request):
+    """The form values ({field: value}) of a normalized request (the reverse of request_from_form)."""
+    h = request["hires"] or {k: c[2] for k, c in contract.HIRES_FIELDS.items()}
+    f = request["face_fix"] or {k: c[2] for k, c in contract.FACE_FIELDS.items()}
+    v = {k: request[k] for k in ("prompt", "negative", "quality", "width", "height", "steps", "cfg", "sampler",
+                                 "seed", "count")}
+    v.update(style=request["style"] or NO_STYLE, block_explicit=request["block_explicit"])
+    v.update(sheet=request["sheet"] or NO_SHEET, hires=bool(request["hires"]), face_fix=bool(request["face_fix"]),
+             loras="\n".join("%s:%g" % (l["name"], l["weight"]) for l in request["loras"]))
+    v.update({"hires_" + k: h[k] for k in ("scale", "strength", "steps", "upscaler")})
+    v.update({"face_fix_" + k: f[k] for k in ("strength", "steps", "margin", "prompt")}, face_fix_max=f["max_faces"])
     return v
 
 
-def caminho_novo(pasta, agora):
-    """pasta/AAAA-MM-DD/HHMMSS.png, com _2, _3 ... se já existe um PNG (ou uma série x_001.png) com esse nome."""
-    dia = os.path.join(pasta, agora.strftime("%Y-%m-%d"))
-    base = os.path.join(dia, agora.strftime("%H%M%S"))
-    n, candidato = 1, base
-    while any(os.path.exists(candidato + s) for s in (".png", "_001.png")):
+def new_path(folder, now):
+    """folder/YYYY-MM-DD/HHMMSS.png, with _2, _3 ... if a PNG (or an x_001.png series) with that name exists."""
+    day = os.path.join(folder, now.strftime("%Y-%m-%d"))
+    base = os.path.join(day, now.strftime("%H%M%S"))
+    n, candidate = 1, base
+    while any(os.path.exists(candidate + s) for s in (".png", "_001.png")):
         n += 1
-        candidato = "%s_%d" % (base, n)
-    return candidato + ".png"
+        candidate = "%s_%d" % (base, n)
+    return candidate + ".png"
 
 
-def recentes(pasta, n=GALERIA_MAX):
-    """Os n PNGs mais novos da pasta de saída (e das subpastas)."""
-    achados = []
-    for dirpath, _, nomes in os.walk(pasta):
-        achados += [os.path.join(dirpath, x) for x in nomes if x.lower().endswith(".png")]
-    return sorted(achados, key=os.path.getmtime, reverse=True)[:n]
+def recent(folder, n=GALLERY_MAX):
+    """The n newest PNGs of the output folder (and its subfolders)."""
+    found = []
+    for dirpath, _, names in os.walk(folder):
+        found += [os.path.join(dirpath, x) for x in names if x.lower().endswith(".png")]
+    return sorted(found, key=os.path.getmtime, reverse=True)[:n]
 
 
-def textos_do_png(caminho):
+def png_texts(path):
     from PIL import Image
-    with Image.open(caminho) as im:
+    with Image.open(path) as im:
         return dict(getattr(im, "text", {}) or im.info)
 
 
 class App:
-    """O estado da interface: a configuração, a sessão (o modelo carregado) e a trava de uma geração por vez."""
+    """The interface state: the configuration, the session (the loaded model) and the lock of one generation at a
+    time."""
 
     def __init__(self, cfg):
-        self.cfg, self.sessao, self.trava = cfg, modelo.Sessao(cfg), threading.Lock()
+        self.cfg, self.session, self.lock = cfg, model.Session(cfg), threading.Lock()
 
-    def fichas(self):
-        return [NENHUMA] + fichas.listar(self.cfg.pasta_fichas)
+    def sheet_choices(self):
+        return [NO_SHEET] + sheets.list_sheets(self.cfg.sheets_folder)
 
-    def gerar(self, *valores):
+    def generate(self, *values):
         import gradio as gr
         try:
-            pedido = pedido_da_tela(dict(zip(CAMPOS, valores)))
-        except contrato.ErroPedido as e:
+            request = request_from_form(dict(zip(FIELDS, values)))
+        except contract.RequestError as e:
             raise gr.Error(str(e))
-        if not self.trava.acquire(blocking=False):
-            raise gr.Error("já há uma geração rodando; espere ela terminar")
+        if not self.lock.acquire(blocking=False):
+            raise gr.Error("a generation is already running; wait for it to finish")
         try:
-            feitos = gerar.rodar(pedido, caminho_novo(self.cfg.pasta_saida, datetime.datetime.now()), self.sessao,
-                                 self.cfg)
-        except contrato.ErroPedido as e:
+            done = generate.run(request, new_path(self.cfg.output_folder, datetime.datetime.now()), self.session,
+                                self.cfg)
+        except contract.RequestError as e:
             raise gr.Error(str(e))
-        except Exception as e:  # o modelo não carregou, faltou memória na placa, ...
-            texto = traceback.format_exc()
-            print(texto, file=sys.stderr)
-            registro = registrar_falha(self.cfg.pasta_saida, pedido, texto)
-            modelo.esvaziar_cache()  # depois de faltar memória, a próxima geração começa com a placa limpa
-            raise gr.Error("a geração falhou: %s: %s (detalhes em %s)" % (type(e).__name__, e, registro))
+        except Exception as e:  # the model did not load, the GPU ran out of memory, ...
+            text = traceback.format_exc()
+            print(text, file=sys.stderr)
+            log = log_failure(self.cfg.output_folder, request, text)
+            model.empty_cache()  # after running out of memory, the next generation starts with a clean GPU
+            raise gr.Error("the generation failed: %s: %s (details in %s)" % (type(e).__name__, e, log))
         finally:
-            self.trava.release()
-        pngs = [png for png, _ in feitos]
-        return pngs, "Gravado: " + ", ".join("`%s`" % os.path.relpath(p, self.cfg.pasta_saida) for p in pngs)
+            self.lock.release()
+        pngs = [png for png, _ in done]
+        return pngs, "Written: " + ", ".join("`%s`" % os.path.relpath(p, self.cfg.output_folder) for p in pngs)
 
-    def ler_png(self, caminho):
+    def read_png(self, path):
         import gradio as gr
-        if not caminho:
-            raise gr.Error("escolha um PNG")
+        if not path:
+            raise gr.Error("choose a PNG")
         try:
-            v = tela_do_pedido(metadados.pedido_do_png(textos_do_png(caminho)))
-        except contrato.ErroPedido as e:
+            v = form_from_request(metadata.request_from_png(png_texts(path)))
+        except contract.RequestError as e:
             raise gr.Error(str(e))
         except OSError as e:
-            raise gr.Error("o arquivo não abriu como PNG: %s" % e)
-        return [v[c] for c in CAMPOS]
+            raise gr.Error("the file did not open as a PNG: %s" % e)
+        return [v[c] for c in FIELDS]
 
-    def abrir_ficha(self, nome):
+    def open_sheet(self, name):
         import gradio as gr
-        if nome in (None, "", NENHUMA):
+        if name in (None, "", NO_SHEET):
             return "", "", "", "", ""
         try:
-            f = fichas.ler_ficha(fichas.resolver(nome, self.cfg.pasta_fichas))
-        except contrato.ErroPedido as e:
+            s = sheets.read_sheet(sheets.resolve(name, self.cfg.sheets_folder))
+        except contract.RequestError as e:
             raise gr.Error(str(e))
-        return (f["nome"], f["tags"], f["negativo"], "\n".join("%s:%g" % (l["nome"], l["peso"]) for l in f["loras"]),
-                f["notas"])
+        return (s["name"], s["tags"], s["negative"], "\n".join("%s:%g" % (l["name"], l["weight"]) for l in s["loras"]),
+                s["notes"])
 
-    def salvar_ficha(self, nome, tags, negativo, texto_loras, notas, sobrescrever):
+    def save_sheet(self, name, tags, negative, loras_text, notes, overwrite):
         import gradio as gr
         try:
-            ficha = {"nome": nome or "", "tags": tags or "", "negativo": negativo or "", "notas": notas or "",
-                     "loras": loras.ler_lista(texto_loras)}
-            caminho = os.path.join(self.cfg.pasta_fichas, fichas.nome_de_arquivo(nome or "") + ".toml")
-            fichas.gravar_ficha(ficha, caminho, sobrescrever=bool(sobrescrever))
-        except contrato.ErroPedido as e:
+            sheet = {"name": name or "", "tags": tags or "", "negative": negative or "", "notes": notes or "",
+                     "loras": loras.parse_list(loras_text)}
+            path = os.path.join(self.cfg.sheets_folder, sheets.file_name(name or "") + ".toml")
+            sheets.write_sheet(sheet, path, overwrite=bool(overwrite))
+        except contract.RequestError as e:
             raise gr.Error(str(e))
-        escolhas = self.fichas()
-        return ("Ficha gravada: `%s`" % os.path.basename(caminho), gr.update(choices=escolhas),
-                gr.update(choices=escolhas))
+        choices = self.sheet_choices()
+        return ("Sheet saved: `%s`" % os.path.basename(path), gr.update(choices=choices),
+                gr.update(choices=choices))
 
 
-def _aba_gerar(gr, app, c):
+def _generate_tab(gr, app, c):
     with gr.Row():
         with gr.Column(scale=3):
-            c["ficha"] = gr.Dropdown(app.fichas(), value=NENHUMA, label="Ficha de personagem", allow_custom_value=True)
-            c["prompt"] = gr.Textbox(label="Prompt (tags da cena)", lines=4)
-            c["negativo"] = gr.Textbox(label="Negativo", lines=2)
+            c["sheet"] = gr.Dropdown(app.sheet_choices(), value=NO_SHEET, label="Character sheet",
+                                     allow_custom_value=True)
+            c["prompt"] = gr.Textbox(label="Prompt (scene tags)", lines=4)
+            c["negative"] = gr.Textbox(label="Negative", lines=2)
             with gr.Row():
-                c["qualidade"] = gr.Checkbox(True, label="Tags de qualidade do Pony (score_9, score_8_up, ...)")
-                c["bloquear_explicito"] = gr.Checkbox(True, label="Desativar classificações explícitas (rating_safe)")
-                c["estilo"] = gr.Dropdown(list(contrato.ESTILOS) + [SEM_ESTILO], value="anime", label="Estilo")
+                c["quality"] = gr.Checkbox(True, label="Pony quality tags (score_9, score_8_up, ...)")
+                c["block_explicit"] = gr.Checkbox(True, label="Block explicit ratings (rating_safe)")
+                c["style"] = gr.Dropdown(list(contract.STYLES) + [NO_STYLE], value="anime", label="Style")
             with gr.Row():
-                c["largura"] = gr.Slider(contrato.LADO_MIN, contrato.LADO_MAX, 1024, step=8, label="Largura")
-                c["altura"] = gr.Slider(contrato.LADO_MIN, contrato.LADO_MAX, 1024, step=8, label="Altura")
+                c["width"] = gr.Slider(contract.SIDE_MIN, contract.SIDE_MAX, 1024, step=8, label="Width")
+                c["height"] = gr.Slider(contract.SIDE_MIN, contract.SIDE_MAX, 1024, step=8, label="Height")
             with gr.Row():
-                c["passos"] = gr.Slider(1, 150, 25, step=1, label="Passos")
+                c["steps"] = gr.Slider(1, 150, 25, step=1, label="Steps")
                 c["cfg"] = gr.Slider(1, 30, 7, step=0.5, label="CFG")
             with gr.Row():
-                c["amostrador"] = gr.Dropdown(list(contrato.AMOSTRADORES), value="euler_a", label="Amostrador")
-                c["seed"] = gr.Number(-1, precision=0, label="Seed (-1 sorteia)")
-                c["quantidade"] = gr.Slider(1, 16, 1, step=1, label="Quantidade")
-            c["loras"] = gr.Textbox(label="LoRAs (um por linha, nome:peso)", lines=2,
-                                    info="Na pasta: " + (", ".join(loras.listar(app.cfg.pasta_loras)) or "nenhum"))
+                c["sampler"] = gr.Dropdown(list(contract.SAMPLERS), value="euler_a", label="Sampler")
+                c["seed"] = gr.Number(-1, precision=0, label="Seed (-1 draws one)")
+                c["count"] = gr.Slider(1, 16, 1, step=1, label="Count")
+            c["loras"] = gr.Textbox(label="LoRAs (one per line, name:weight)", lines=2,
+                                    info="In the folder: " + (", ".join(loras.list_loras(app.cfg.loras_folder))
+                                                              or "none"))
             _extras(gr, c)
-            botao = gr.Button("Gerar", variant="primary")
+            button = gr.Button("Generate", variant="primary")
         with gr.Column(scale=2):
-            resultado = gr.Gallery(label="Resultado", columns=2, height="auto")
-            aviso = gr.Markdown()
-    return botao, resultado, aviso
+            result = gr.Gallery(label="Result", columns=2, height="auto")
+            notice = gr.Markdown()
+    return button, result, notice
 
 
 def _extras(gr, c):
-    with gr.Accordion("Hires fix (desligado por padrão)", open=False):
-        c["hires"] = gr.Checkbox(False, label="Ligar")
+    with gr.Accordion("Hires fix (off by default)", open=False):
+        c["hires"] = gr.Checkbox(False, label="Turn on")
         with gr.Row():
-            c["hires_escala"] = gr.Slider(1.05, 4, 1.5, step=0.05, label="Escala")
-            c["hires_forca"] = gr.Slider(0.05, 1, 0.4, step=0.05, label="Força")
-            c["hires_passos"] = gr.Slider(1, 150, 15, step=1, label="Passos")
-        c["hires_upscaler"] = gr.Radio(list(contrato.UPSCALERS), value="modelo", label="Upscaler")
-    with gr.Accordion("Correção de rosto (desligada por padrão)", open=False):
-        c["rosto"] = gr.Checkbox(False, label="Ligar")
+            c["hires_scale"] = gr.Slider(1.05, 4, 1.5, step=0.05, label="Scale")
+            c["hires_strength"] = gr.Slider(0.05, 1, 0.4, step=0.05, label="Strength")
+            c["hires_steps"] = gr.Slider(1, 150, 15, step=1, label="Steps")
+        c["hires_upscaler"] = gr.Radio(list(contract.UPSCALERS), value="model", label="Upscaler")
+    with gr.Accordion("Face fix (off by default)", open=False):
+        c["face_fix"] = gr.Checkbox(False, label="Turn on")
         with gr.Row():
-            c["rosto_forca"] = gr.Slider(0.05, 1, 0.4, step=0.05, label="Força")
-            c["rosto_passos"] = gr.Slider(1, 150, 20, step=1, label="Passos")
-            c["rosto_margem"] = gr.Slider(0, 2, 0.3, step=0.05, label="Margem")
-            c["rosto_max"] = gr.Slider(1, 16, 4, step=1, label="Máximo de rostos")
-        c["rosto_prompt"] = gr.Textbox(label="Tags a mais para o rosto")
+            c["face_fix_strength"] = gr.Slider(0.05, 1, 0.4, step=0.05, label="Strength")
+            c["face_fix_steps"] = gr.Slider(1, 150, 20, step=1, label="Steps")
+            c["face_fix_margin"] = gr.Slider(0, 2, 0.3, step=0.05, label="Margin")
+            c["face_fix_max"] = gr.Slider(1, 16, 4, step=1, label="Maximum faces")
+        c["face_fix_prompt"] = gr.Textbox(label="Extra tags for the face")
 
 
-def _aba_fichas(gr, app):
-    escolha = gr.Dropdown(app.fichas(), value=NENHUMA, label="Abrir uma ficha")
-    nome = gr.Textbox(label="Nome do personagem")
-    tags = gr.Textbox(label="Tags (o que o descreve: cabelo, olhos, roupa)", lines=3)
-    negativo = gr.Textbox(label="Negativo", lines=2)
-    texto_loras = gr.Textbox(label="LoRAs (um por linha, nome:peso)", lines=2)
-    notas = gr.Textbox(label="Notas", lines=2)
-    sobrescrever = gr.Checkbox(False, label="Sobrescrever se já existir")
-    salvar = gr.Button("Salvar ficha")
-    aviso = gr.Markdown()
-    escolha.change(app.abrir_ficha, escolha, [nome, tags, negativo, texto_loras, notas])
-    return escolha, salvar, [nome, tags, negativo, texto_loras, notas, sobrescrever], aviso
+def _sheets_tab(gr, app):
+    choice = gr.Dropdown(app.sheet_choices(), value=NO_SHEET, label="Open a sheet")
+    name = gr.Textbox(label="Character name")
+    tags = gr.Textbox(label="Tags (what describes the character: hair, eyes, outfit)", lines=3)
+    negative = gr.Textbox(label="Negative", lines=2)
+    loras_text = gr.Textbox(label="LoRAs (one per line, name:weight)", lines=2)
+    notes = gr.Textbox(label="Notes", lines=2)
+    overwrite = gr.Checkbox(False, label="Overwrite if it already exists")
+    save = gr.Button("Save sheet")
+    notice = gr.Markdown()
+    choice.change(app.open_sheet, choice, [name, tags, negative, loras_text, notes])
+    return choice, save, [name, tags, negative, loras_text, notes, overwrite], notice
 
 
-def criar(app):
-    """Monta a interface (gr.Blocks) da App."""
+def build(app):
+    """Builds the interface (gr.Blocks) of the App."""
     import gradio as gr
     c = {}
-    with gr.Blocks(title="AIGenerator") as tela:
-        gr.Markdown("# AIGenerator\nPony Diffusion XL · versão %s" % VERSAO)
-        with gr.Tab("Gerar"):
-            botao, resultado, aviso = _aba_gerar(gr, app, c)
-        with gr.Tab("Fichas"):
-            escolha, salvar, entradas_ficha, aviso_ficha = _aba_fichas(gr, app)
-        with gr.Tab("Galeria"):
-            atualizar = gr.Button("Atualizar")
-            galeria = gr.Gallery(label="Pasta de saída", columns=4, height="auto")
-        with gr.Tab("Ler PNG"):
-            arquivo = gr.File(label="Um PNG do AIGenerator", file_types=[".png"], type="filepath")
-            gr.Markdown("O pedido guardado no PNG vai para a aba Gerar.")
-        entradas = [c[k] for k in CAMPOS]
-        botao.click(app.gerar, entradas, [resultado, aviso], concurrency_limit=1)
-        salvar.click(app.salvar_ficha, entradas_ficha, [aviso_ficha, c["ficha"], escolha])
-        atualizar.click(lambda: recentes(app.cfg.pasta_saida), None, galeria)
-        arquivo.upload(app.ler_png, arquivo, entradas)
-    return tela
+    with gr.Blocks(title="AIGenerator") as page:
+        gr.Markdown("# AIGenerator\nPony Diffusion XL · version %s" % VERSION)
+        with gr.Tab("Generate"):
+            button, result, notice = _generate_tab(gr, app, c)
+        with gr.Tab("Sheets"):
+            choice, save, sheet_inputs, sheet_notice = _sheets_tab(gr, app)
+        with gr.Tab("Gallery"):
+            refresh = gr.Button("Refresh")
+            gallery = gr.Gallery(label="Output folder", columns=4, height="auto")
+        with gr.Tab("Read PNG"):
+            upload = gr.File(label="A PNG made by AIGenerator", file_types=[".png"], type="filepath")
+            gr.Markdown("The request kept in the PNG goes to the Generate tab.")
+        inputs = [c[k] for k in FIELDS]
+        button.click(app.generate, inputs, [result, notice], concurrency_limit=1)
+        save.click(app.save_sheet, sheet_inputs, [sheet_notice, c["sheet"], choice])
+        refresh.click(lambda: recent(app.cfg.output_folder), None, gallery)
+        upload.upload(app.read_png, upload, inputs)
+    return page
 
 
-def principal(argv=None):
-    p = gerar._Opcoes(prog=contrato.comando("aigen_web"), description="A interface web do AIGenerator.")
-    p.add_argument("--porta", type=int, help="a porta (padrão: a do config, 7860)")
-    p.add_argument("--abrir", action="store_true", help="abre a interface no navegador quando ela estiver pronta")
+def main(argv=None):
+    p = generate._Options(prog=contract.command("aigen_web"), description="The AIGenerator web interface.")
+    p.add_argument("--port", type=int, help="the port (default: the one in the config, 7860)")
+    p.add_argument("--open", action="store_true", help="open the interface in the browser when it is ready")
     a = p.parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        cfg = config.ler()
-        modelo.conferir_bibliotecas(modelo.BIBLIOTECAS + ("gradio",))
-    except contrato.ErroPedido as e:
-        print("ERRO: %s" % e, file=sys.stderr)
-        return contrato.ERRO_PEDIDO
-    porta = a.porta or cfg.porta
-    print("AIGenerator %s em http://127.0.0.1:%d" % (VERSAO, porta))
-    criar(App(cfg)).queue().launch(server_name="127.0.0.1", server_port=porta, inbrowser=a.abrir)
-    return contrato.OK
+        cfg = config.read()
+        model.check_libraries(model.LIBRARIES + ("gradio",))
+    except contract.RequestError as e:
+        print("ERROR: %s" % e, file=sys.stderr)
+        return contract.BAD_REQUEST
+    port = a.port or cfg.port
+    print("AIGenerator %s at http://127.0.0.1:%d" % (VERSION, port))
+    build(App(cfg)).queue().launch(server_name="127.0.0.1", server_port=port, inbrowser=a.open)
+    return contract.OK
 
 
 if __name__ == "__main__":
-    sys.exit(principal())
+    sys.exit(main())

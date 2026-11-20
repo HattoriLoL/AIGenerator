@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# A suíte inteira: tests/test_contrato.py e tests/test_puros.py, em qualquer Python 3.11+, sem o torch nem a placa.
-# Nenhum teste gera imagem (AGENTS.md, "Testing"). Código de saída 0 quando tudo passa.
-RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-py="${AIGEN_PYTHON_TESTES:-python3}"
-falhou=0
-for teste in test_contrato.py test_puros.py; do
-    echo "== $teste"
-    "$py" "$RAIZ/tests/$teste" || falhou=1
+# The whole suite: tests/test_contract.py and tests/test_pure.py, on any Python 3.11+, without torch or a GPU.
+# No test generates an image (AGENTS.md, "Testing"). Exit code 0 when everything passes.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+py="${AIGEN_PYTHON_TESTS:-python3}"
+failed=0
+for test in test_contract.py test_pure.py; do
+    echo "== $test"
+    "$py" "$ROOT/tests/$test" || failed=1
 done
-[ "$falhou" -eq 0 ] && echo "== tudo passou" || echo "== FALHOU" >&2
-exit "$falhou"
+[ "$failed" -eq 0 ] && echo "== all passed" || echo "== FAILED" >&2
+exit "$failed"

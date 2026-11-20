@@ -1,18 +1,18 @@
-# O ambiente (bin/instalar.sh)
+# The environment (bin/install.sh)
 .venv/
 __pycache__/
 *.pyc
-# Os modelos (pesos nunca vão para o git: AGENTS.md, "Rules"), as imagens geradas e as fichas pessoais
+# The models (weights never go into git: AGENTS.md, "Rules"), the generated images and the personal sheets
 /models/
-/saida/
-/personagens/
+/output/
+/characters/
 *.safetensors
 *.ckpt
 *.pt
 *.pth
 *.onnx
 *.gguf
-# Nada de imagens nem de registros de geração, em pasta nenhuma (AGENTS.md, "Public repository")
+# No images and no generation records, in any folder (AGENTS.md, "Public repository")
 *.png
 *.jpg
 *.jpeg
@@ -22,8 +22,8 @@ __pycache__/
 *.avif
 *.aigen.json
 aigen-web.log
-# Configuração local (os caminhos desta máquina)
+# Local configuration (this machine's paths)
 config.local.ini
-# Só na máquina do dono: a lista de termos privados (AGENTS.md, "Isolation") e as notas pessoais do Claude
-.aigen-proibidos
+# Only on the owner's machine: the list of private terms (AGENTS.md, "Isolation") and Claude's personal notes
+.aigen-denylist
 CLAUDE.local.md
