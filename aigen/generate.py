@@ -12,7 +12,8 @@ import random
 import sys
 import time
 
-from aigen import VERSION, config, contract, face, generation, hires, loras, model, output, prompts, sheets, stages
+from aigen import (VERSION, config, contract, face, generation, hires, loras, memory, model, output, prompts,
+                   sheets, stages)
 
 
 class _Options(argparse.ArgumentParser):
@@ -137,7 +138,7 @@ class Job:
     def __init__(self, request, output_png, session, cfg, private=False):
         self.request, self.output, self.session, self.cfg = request, output_png, session, cfg
         self.private = bool(private)  # the prompts are not saved (output.stage)
-        self.t_start, self.timings = time.time(), {}
+        self.t_start, self.timings, self.memory = time.time(), {}, {}
 
 
 @stages.declare(reads=("request", "cfg", "output"), writes=("sheet", "report"))
@@ -180,7 +181,8 @@ def sequence(request):
 def run(request, output_png, session, cfg, notify=None, private=None):
     """Generates the images of a normalized request and returns [(png, report)]. The outputs are all checked before
     the first one; with seed -1, one is drawn and the following ones add 1. `private` (the prompts not saved) is,
-    when None, the config's: not cfg.save_prompts."""
+    when None, the config's: not cfg.save_prompts. After each image (made or failed), the memory that is no longer
+    used is given back (memory.free); the model stays loaded in the session."""
     private = not cfg.save_prompts if private is None else bool(private)
     pngs = output.paths(output_png, request["count"])
     output.check_outputs(pngs)
@@ -191,10 +193,15 @@ def run(request, output_png, session, cfg, notify=None, private=None):
         seq = sequence(one)
         stages.check(seq)
         t = Job(one, png, session, cfg, private)
-        for f in seq:
-            start = time.time()
-            f(t)
-            t.timings[stages.name(f)] = round(time.time() - start, 3)
+        try:
+            for f in seq:
+                start = time.time()
+                memory.start()
+                f(t)
+                t.timings[stages.name(f)] = round(time.time() - start, 3)
+                t.memory[stages.name(f)] = memory.measure()
+        finally:
+            memory.free()
         done.append(t.files)
         if notify:
             notify("%s (seed %d, %.1f s)" % (png, one["seed"], time.time() - t.t_start))

@@ -6,7 +6,8 @@ Tabs: Generate (the request, the sheets, the LoRAs, the hires fix and the face f
 (the images of the output folder) and Read PNG (rebuilds the request from an AIGenerator image). One generation at a
 time. Each failure goes, with the full error and the request, to the log <output folder>/aigen-web.log; in private
 mode (the "private" box of the Generate tab, which starts as the config's [privacy] save_prompts says) neither the
-PNG, the report nor the log keeps the prompts.
+PNG, the report nor the log keeps the prompts. The model stays loaded between generations and is let go after
+[web] unload_after minutes without one (or with the "Free GPU memory" button).
 gradio and PIL are only imported inside the functions.
 """
 import datetime
@@ -14,6 +15,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback
 
 from aigen import VERSION, config, contract, generate, loras, metadata, model, sheets
@@ -41,6 +43,12 @@ def log_failure(folder, request, error_text, now=None, private=False):
     with open(path, "a", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return path
+
+
+def should_unload(loaded, last_used, now, minutes):
+    """Whether the idle model is let go: it is loaded, the setting is on (minutes > 0) and the last generation ended
+    at least that many minutes ago (a second early still counts: the timer is not exact)."""
+    return loaded and minutes > 0 and last_used is not None and now - last_used >= minutes * 60 - 1
 
 
 def private_default(cfg):
@@ -137,6 +145,41 @@ class App:
 
     def __init__(self, cfg):
         self.cfg, self.session, self.lock = cfg, model.Session(cfg), threading.Lock()
+        self.last_used, self._timer = None, None
+
+    def _schedule_unload(self):
+        """After a generation: the idle model is let go in [web] unload_after minutes, unless another one comes."""
+        if self._timer:
+            self._timer.cancel()
+        if self.cfg.unload_after > 0:
+            self._timer = threading.Timer(self.cfg.unload_after * 60, self.unload_if_idle)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def unload_if_idle(self):
+        if not self.lock.acquire(blocking=False):  # a generation is running; it schedules again when it ends
+            return
+        try:
+            if should_unload(self.session.loaded, self.last_used, time.time(), self.cfg.unload_after):
+                self.session.release()
+                print("model unloaded after %d minutes without a generation (the GPU memory is free)"
+                      % self.cfg.unload_after)
+        finally:
+            self.lock.release()
+
+    def free_gpu(self):
+        """The "Free GPU memory" button: lets go of the model now."""
+        import gradio as gr
+        if not self.lock.acquire(blocking=False):
+            raise gr.Error("a generation is running; wait for it to finish")
+        try:
+            loaded = self.session.loaded
+            self.session.release()
+        finally:
+            self.lock.release()
+        if not loaded:
+            return "The model was not loaded."
+        return "Model unloaded: the GPU memory is free. The next generation loads it again."
 
     def sheet_choices(self):
         return [NO_SHEET] + sheets.list_sheets(self.cfg.sheets_folder)
@@ -162,6 +205,8 @@ class App:
             model.empty_cache()  # after running out of memory, the next generation starts with a clean GPU
             raise gr.Error("the generation failed: %s: %s (details in %s)" % (type(e).__name__, e, log))
         finally:
+            self.last_used = time.time()
+            self._schedule_unload()
             self.lock.release()
         pngs = [png for png, _ in done]
         return pngs, "Written: " + ", ".join("`%s`" % os.path.relpath(p, self.cfg.output_folder) for p in pngs)
@@ -257,6 +302,8 @@ def _generate_tab(gr, app, c):
         with gr.Column(scale=2):
             result = gr.Gallery(label="Result", columns=2, height="auto")
             notice = gr.Markdown()
+            free = gr.Button("Free GPU memory", size="sm")
+            free.click(app.free_gpu, None, notice)
     return button, result, notice
 
 

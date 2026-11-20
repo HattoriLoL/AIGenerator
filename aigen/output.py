@@ -35,21 +35,23 @@ def check_outputs(pngs):
                 raise contract.RequestError("the output already exists (nothing is overwritten): " + c)
 
 
-def build_report(request, entries, png_name, model, seconds, timings, private=False):
-    """The dictionary of the .aigen.json report: the request and the stages' entries (sheet, prompt, loras,
-    generation, ...). In private mode, the request is redacted (metadata.redact_request) and the prompt, sheet and
-    loras entries are left out. Does not change the given values."""
+def build_report(request, entries, png_name, model, seconds, timings, private=False, memory=None):
+    """The dictionary of the .aigen.json report: the request, the stages' entries (sheet, prompt, loras,
+    generation, ...) and the memory each stage used (memory.entry, by stage name). In private mode, the request is
+    redacted (metadata.redact_request) and the prompt, sheet and loras entries are left out. Does not change the
+    given values."""
     if private:
         request = metadata.redact_request(request)
         entries = {k: v for k, v in entries.items() if k not in PRIVATE_REPORT_FIELDS}
     return {"format_version": contract.FORMAT_VERSION, "aigen": VERSION, "png": png_name, "request": request,
-            "model": model, "seconds": seconds, "timings": dict(timings), **entries, "private": bool(private)}
+            "model": model, "seconds": seconds, "timings": dict(timings), "memory": dict(memory or {}), **entries,
+            "private": bool(private)}
 
 
 def report(t, png_name):
     """The .aigen.json report of a job."""
     return build_report(t.request, t.report, png_name, os.path.basename(t.cfg.checkpoint),
-                        round(time.time() - t.t_start, 2), t.timings, t.private)
+                        round(time.time() - t.t_start, 2), t.timings, t.private, t.memory)
 
 
 def _write_new(path, write):
@@ -69,7 +71,7 @@ def write_png(image, path, chunks):
 
 
 @stages.declare(reads=("image", "request", "positive", "negative", "active_loras", "output", "cfg", "report",
-                       "private"),
+                       "private", "timings", "memory"),
                 writes=("files",))
 def stage(t):
     """Writes the PNG with the metadata (none in private mode) and the report."""
