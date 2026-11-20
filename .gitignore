@@ -10,6 +10,18 @@ __pycache__/
 *.ckpt
 *.pt
 *.pth
+*.onnx
+*.gguf
+# Nada de imagens nem de registros de geração, em pasta nenhuma (AGENTS.md, "Public repository")
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.avif
+*.aigen.json
+aigen-web.log
 # Configuração local (os caminhos desta máquina)
 config.local.ini
 # Só na máquina do dono: a lista de termos privados (AGENTS.md, "Isolation") e as notas pessoais do Claude

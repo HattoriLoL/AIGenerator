@@ -16,6 +16,14 @@ Rules for a Claude Code agent in this repository, on top of `AGENTS.md`.
 - When a change affects the images (a stage, a default, the prompt assembly), say so plainly and say what the owner
   should look at when they run it. Do not claim an image got better or worse.
 
+## The repository is public
+- Follow "Public repository" in `AGENTS.md`. Never stage images, outputs, reports, logs, weights, sheets of real
+  characters or anything with a path or name from this machine.
+- Before every commit, look at what is staged (`git status --short` and `git diff --cached --stat`), not only at
+  what you meant to change, and run `python3 bin/verificar_segredos.py --all` and `tests/run.sh`.
+- Commit messages, branch names, pull requests and issues are public too: describe the change, never the owner's
+  private projects, characters, prompts or images.
+
 ## What to run
 - The tests: `tests/run.sh`, `python3 tests/test_contrato.py` and `python3 tests/test_puros.py` (seconds, no GPU).
 - Do not install the environment (`bin/instalar.sh`, `uv sync`), download models (`bin/baixar_auxiliares.sh`) or

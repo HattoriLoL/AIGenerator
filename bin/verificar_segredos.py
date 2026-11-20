@@ -31,8 +31,10 @@ ARQUIVOS_PROIBIDOS = [
     "secrets.*", "secret.*", "config.local.*", "*.local.ini", "*.local.json", "*.local.toml",
     ".netrc", ".npmrc", ".pypirc", "token", "token.txt", "*.token", "service-account*.json",
     "client_secret*.json", ".htpasswd", ".aigen-proibidos", "claude.local.md",
-    # pesos de modelos: nunca vão para o repositório (AGENTS.md, "Rules")
+    # pesos de modelos e o que o AIGenerator gera: nunca vão para o repositório (AGENTS.md, "Public repository")
     "*.safetensors", "*.ckpt", "*.pt", "*.pth", "*.onnx", "*.gguf",
+    "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp", "*.avif",
+    "*.aigen.json", "aigen-web.log",
 ]
 ARQUIVOS_PERMITIDOS = [".env.example", ".env.sample", ".env.template", "example.env"]
 
