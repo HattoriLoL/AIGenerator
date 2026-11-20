@@ -4,4 +4,13 @@ sheet_version = 1
 name = "Example"
 tags = "1girl, solo, long silver hair, straight hair, red eyes, black hoodie, white pleated skirt"
 negative = "monochrome, 3d"
+# checkpoint = "ponyDiffusionV6XL"   # with it, the sheet only generates with that checkpoint
 notes = "A generic character to try the flow; replace it with your own sheets in characters/."
+
+# Used where the request gives no value (the request wins); examples/request.json gives its own.
+[settings]
+width = 832
+height = 1216
+steps = 25
+cfg = 7.0
+sampler = "euler_a"

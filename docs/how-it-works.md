@@ -9,8 +9,8 @@ the GPU.
 
 1. **Request check** (`generate.check_request`). Everything that can be checked without loading the model: the Python
    libraries, the checkpoint file, the upscaler and face detector files (only when hires fix or face fix is on), the
-   character sheet, every LoRA file and the output paths. A problem here ends with exit code 2 and nothing loaded or
-   written.
+   character sheet (and, when it names a checkpoint, that the configured one is it), every LoRA file and the output
+   paths. A problem here ends with exit code 2 and nothing loaded or written.
 2. **Prompt** (`prompts.stage`). The positive prompt is, in this order: the Pony quality tags
    (`score_9, score_8_up, ...`, unless `"quality": false`), the style's source tag (`source_anime`, unless
    `"style": null`), `rating_safe` (unless `"block_explicit": false`), the sheet's tags and the request's prompt,

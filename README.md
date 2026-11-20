@@ -8,7 +8,7 @@ interface, with character sheets, LoRAs, hires fix and face fix.
 the scene tags, an optional character sheet, the size, the sampler, the seed, LoRAs and the optional passes.
 
 - **Character sheets:** a small TOML file per character keeps the tags that do not change (hair, eyes, outfit, the
-  character's LoRA), so each request only describes the scene. See [docs/sheets.md](docs/sheets.md).
+  character's LoRA), the checkpoint and the settings that give it its look, so each request only describes the scene. See [docs/sheets.md](docs/sheets.md).
 - **Anime by default, Pony-aware prompts:** the `score_9, score_8_up, ...` quality tags, the `source_anime` style tag
   and `rating_safe` (with the other sources, 3D, realism and explicit ratings in the negative) are added for you;
   each one can be turned off. Tags are not repeated, and AUTOMATIC1111 weights (`(tag:1.2)`) and long prompts work.

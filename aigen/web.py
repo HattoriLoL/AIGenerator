@@ -87,6 +87,25 @@ def form_from_request(request):
     return v
 
 
+def form_from_settings(settings):
+    """The form values ({field of FIELDS: value}) that a sheet's settings set; the others are not in it."""
+    v = {k: settings[k] for k in sheets.SETTINGS if k in settings}
+    if "style" in v:
+        v["style"] = v["style"] or NO_STYLE
+    for field in sheets.PASSES:
+        if field in settings:
+            v[field] = bool(settings[field])
+            for k, value in (settings[field] or {}).items():
+                v["face_fix_max" if k == "max_faces" else field + "_" + k] = value
+    return v
+
+
+def settings_from_form(v):
+    """The sheet settings of the form: its quality, style, size, steps, CFG, sampler, hires fix and face fix (the
+    prompt and the sheet do not matter here, so they are left out of the check)."""
+    return sheets.settings_of(request_from_form(dict(v, prompt="-", sheet=NO_SHEET)))
+
+
 def new_path(folder, now):
     """folder/YYYY-MM-DD/HHMMSS.png, with _2, _3 ... if a PNG (or an x_001.png series) with that name exists."""
     day = os.path.join(folder, now.strftime("%Y-%m-%d"))
@@ -159,22 +178,44 @@ class App:
             raise gr.Error("the file did not open as a PNG: %s" % e)
         return [v[c] for c in FIELDS]
 
+    def sheet_settings(self, name):
+        """The Generate tab, when a sheet is chosen there: the fields its settings set take its values."""
+        import gradio as gr
+        path = None if name in (None, "", NO_SHEET) else sheets.resolve(name, self.cfg.sheets_folder)
+        if not path or not os.path.isfile(path):  # no sheet, or a name still being typed
+            return [gr.update() for _ in FIELDS]
+        try:
+            v = form_from_settings(sheets.read_sheet(path)["settings"])
+        except contract.RequestError as e:
+            raise gr.Error(str(e))
+        return [gr.update(value=v[f]) if f in v else gr.update() for f in FIELDS]
+
+    def settings_from_generate(self, *values):
+        """The Sheets tab's checkpoint and settings, taken from the Generate tab and the configured checkpoint."""
+        import gradio as gr
+        try:
+            settings = settings_from_form(dict(zip(FIELDS, values)))
+        except contract.RequestError as e:
+            raise gr.Error(str(e))
+        return sheets.model_name(self.cfg.checkpoint), sheets.settings_text(settings)
+
     def open_sheet(self, name):
         import gradio as gr
         if name in (None, "", NO_SHEET):
-            return "", "", "", "", ""
+            return "", "", "", "", "", "", ""
         try:
             s = sheets.read_sheet(sheets.resolve(name, self.cfg.sheets_folder))
         except contract.RequestError as e:
             raise gr.Error(str(e))
         return (s["name"], s["tags"], s["negative"], "\n".join("%s:%g" % (l["name"], l["weight"]) for l in s["loras"]),
-                s["notes"])
+                s["checkpoint"], sheets.settings_text(s["settings"]), s["notes"])
 
-    def save_sheet(self, name, tags, negative, loras_text, notes, overwrite):
+    def save_sheet(self, name, tags, negative, loras_text, checkpoint, settings_text, notes, overwrite):
         import gradio as gr
         try:
             sheet = {"name": name or "", "tags": tags or "", "negative": negative or "", "notes": notes or "",
-                     "loras": loras.parse_list(loras_text)}
+                     "loras": loras.parse_list(loras_text), "checkpoint": checkpoint or "",
+                     "settings": sheets.parse_settings(settings_text, "the sheet's settings")}
             path = os.path.join(self.cfg.sheets_folder, sheets.file_name(name or "") + ".toml")
             sheets.write_sheet(sheet, path, overwrite=bool(overwrite))
         except contract.RequestError as e:
@@ -243,12 +284,18 @@ def _sheets_tab(gr, app):
     tags = gr.Textbox(label="Tags (what describes the character: hair, eyes, outfit)", lines=3)
     negative = gr.Textbox(label="Negative", lines=2)
     loras_text = gr.Textbox(label="LoRAs (one per line, name:weight)", lines=2)
+    checkpoint = gr.Textbox(label="Checkpoint (the file name; empty: any)",
+                            info="With one, the sheet only generates with that checkpoint")
+    settings = gr.Textbox(label="Settings (TOML: steps = 25, cfg = 7.0, [hires] ...)", lines=6,
+                          info="Used where a request gives no value; choosing the sheet in Generate fills them in")
+    copy = gr.Button("Use the Generate tab's settings and the configured checkpoint")
     notes = gr.Textbox(label="Notes", lines=2)
     overwrite = gr.Checkbox(False, label="Overwrite if it already exists")
     save = gr.Button("Save sheet")
     notice = gr.Markdown()
-    choice.change(app.open_sheet, choice, [name, tags, negative, loras_text, notes])
-    return choice, save, [name, tags, negative, loras_text, notes, overwrite], notice
+    fields = [name, tags, negative, loras_text, checkpoint, settings, notes]
+    choice.change(app.open_sheet, choice, fields)
+    return choice, save, fields + [overwrite], notice, copy, [checkpoint, settings]
 
 
 def build(app):
@@ -260,7 +307,7 @@ def build(app):
         with gr.Tab("Generate"):
             button, result, notice = _generate_tab(gr, app, c)
         with gr.Tab("Sheets"):
-            choice, save, sheet_inputs, sheet_notice = _sheets_tab(gr, app)
+            choice, save, sheet_inputs, sheet_notice, copy, copied = _sheets_tab(gr, app)
         with gr.Tab("Gallery"):
             refresh = gr.Button("Refresh")
             gallery = gr.Gallery(label="Output folder", columns=4, height="auto")
@@ -270,6 +317,8 @@ def build(app):
         inputs = [c[k] for k in FIELDS]
         button.click(app.generate, inputs + [c["private"]], [result, notice], concurrency_limit=1)
         save.click(app.save_sheet, sheet_inputs, [sheet_notice, c["sheet"], choice])
+        c["sheet"].input(app.sheet_settings, c["sheet"], inputs)  # input: by the user, not by Read PNG
+        copy.click(app.settings_from_generate, inputs, copied)
         refresh.click(lambda: recent(app.cfg.output_folder), None, gallery)
         upload.upload(app.read_png, upload, inputs)
     return page
