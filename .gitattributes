@@ -1,0 +1,3 @@
+# Os scripts com LF (o bash do Linux não lê CRLF)
+*.sh text eol=lf
+.githooks/* text eol=lf

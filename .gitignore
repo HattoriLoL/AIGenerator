@@ -1,0 +1,17 @@
+# O ambiente (bin/instalar.sh)
+.venv/
+__pycache__/
+*.pyc
+# Os modelos (pesos nunca vão para o git: AGENTS.md, "Rules"), as imagens geradas e as fichas pessoais
+/models/
+/saida/
+/personagens/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+# Configuração local (os caminhos desta máquina)
+config.local.ini
+# Só na máquina do dono: a lista de termos privados (AGENTS.md, "Isolation") e as notas pessoais do Claude
+.aigen-proibidos
+CLAUDE.local.md

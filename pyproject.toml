@@ -1,0 +1,39 @@
+# O ambiente do AIGenerator (bin/instalar.sh roda "uv sync"). Toda dependência tem a licença em docs/licencas.md,
+# conferido por tests/test_contrato.py: só licenças que permitem uso comercial.
+[project]
+name = "aigen"
+version = "0.1.0"
+description = "Anime character image generation with Pony Diffusion XL: command line, batch mode and a local web UI"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.7",
+    "torchvision>=0.22",
+    "diffusers>=0.32",
+    "transformers>=4.44",
+    "accelerate>=0.33",
+    "safetensors>=0.4",
+    "peft>=0.12",
+    "compel>=2.0",
+    "pillow>=10",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9,<5",  # o OpenCV 5 tirou o CascadeClassifier (o detector de rosto)
+    "spandrel>=0.4",
+    "gradio>=5",
+]
+
+[tool.uv]
+# não é um pacote instalável: os lançadores de bin/ põem a raiz no PYTHONPATH
+package = false
+
+# O PyTorch para CUDA 12.8: as placas RTX 50 (Blackwell) não rodam com as versões para CUDA mais antigas.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+# o torchvision (que o spandrel e o transformers puxam) tem de vir do mesmo índice, ou não casa com o torch
+torchvision = [{ index = "pytorch-cu128" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

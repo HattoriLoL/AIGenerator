@@ -1,0 +1,67 @@
+#!/bin/sh
+# Gancho pre-push do AIGenerator: nada sobe com segredo ou com o básico quebrado. Ligue uma vez por clone:
+#     git config core.hooksPath .githooks
+# Para cada branch que sobe, nos commits que o remoto ainda não tem (cada um lido sozinho):
+# 1. procura segredos (bin/verificar_segredos.py);
+# 2. numa cópia da árvore do commit que sobe (não a pasta de trabalho): a sintaxe de todo .py, tests/test_contrato.py
+#    (que também confere a lista local .aigen-proibidos, AGENTS.md) e tests/test_puros.py. Nenhum deles precisa do
+#    torch nem da placa, e nenhum gera imagem: segundos.
+# Qualquer um que falhe barra o push. Sem um Python 3.11+ no PATH, avisa que não rodou e deixa subir. Não contorne
+# com --no-verify: conserte e suba de novo.
+set -u
+remoto="${1:-origin}"
+raiz="$(git rev-parse --show-toplevel)" || exit 1
+cd "$raiz" || exit 1
+
+py=""
+for c in python3 python; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; sys.exit(sys.version_info < (3, 11))" </dev/null >/dev/null 2>&1; then
+        py="$c"
+        break
+    fi
+done
+if [ -z "$py" ]; then
+    echo "pre-push: AVISO: Python 3.11+ não encontrado no PATH; a verificação (segredos e testes) NÃO rodou." >&2
+    exit 0
+fi
+
+falhou=0
+while read -r local_ref local_sha remoto_ref remoto_sha; do
+    [ -z "${local_sha:-}" ] && continue
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac  # apagando um branch: nada a conferir
+    echo "pre-push: $local_ref -> $remoto ($remoto_ref)"
+    "$py" bin/verificar_segredos.py --revs "$local_sha --not --remotes=$remoto" </dev/null || falhou=1
+    arvore="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/aigen_pre_push_$$")"
+    mkdir -p "$arvore"
+    if git archive "$local_sha" </dev/null | tar -x -C "$arvore"; then
+        ( cd "$arvore" && git -C "$raiz" ls-tree -r -z --name-only "$local_sha" | "$py" -c '
+import os, sys
+erros = 0
+for c in sys.stdin.buffer.read().split(b"\0"):
+    nome = c.decode("utf-8", "surrogateescape")
+    if not nome.endswith(".py") or not os.path.isfile(nome):
+        continue
+    try:
+        compile(open(nome, "rb").read(), nome, "exec")
+    except (SyntaxError, ValueError) as e:
+        print("  erro de sintaxe: %s: %s" % (nome, e))
+        erros += 1
+sys.exit(1 if erros else 0)
+' ) || falhou=1
+        for teste in test_contrato.py test_puros.py; do
+            [ -f "$arvore/tests/$teste" ] || continue  # um commit antigo, sem o teste, pula calado
+            AIGEN_GIT_RAIZ="$raiz" AIGEN_REV="$local_sha" "$py" "$arvore/tests/$teste" \
+                </dev/null >"$arvore.log" 2>&1 || { tail -n 30 "$arvore.log"; falhou=1; }
+        done
+    else
+        echo "pre-push: não deu para copiar a árvore de $local_sha" >&2
+        falhou=1
+    fi
+    rm -rf "$arvore" "$arvore.log"
+done
+
+if [ "$falhou" -ne 0 ]; then
+    echo "pre-push: BARRADO. Conserte e suba de novo (não use --no-verify)." >&2
+    exit 1
+fi
+echo "pre-push: ok"
