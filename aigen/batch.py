@@ -12,7 +12,7 @@ import os
 import sys
 import time
 
-from aigen import VERSION, config, contract, generate, model
+from aigen import VERSION, config, contract, generate, model, sheets
 
 SUMMARY = "batch.aigen.json"
 
@@ -41,7 +41,8 @@ def _one(path, destination, session, cfg, private):
     item = {"request": os.path.basename(path)}
     start = time.time()
     try:
-        request = contract.normalize(contract.read_request(path), "the request " + os.path.basename(path))
+        request = contract.normalize(sheets.fill_request(contract.read_request(path), cfg.sheets_folder),
+                                     "the request " + os.path.basename(path))
         done = generate.run(request, os.path.join(destination, name + ".png"), session, cfg, private=private)
         item.update(ok=True, png=[os.path.basename(png) for png, _ in done])
     except contract.RequestError as e:

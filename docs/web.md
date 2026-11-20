@@ -28,8 +28,8 @@ there is no login, so do not expose the port. It is a thin layer over the same c
 
 | Tab | What it does |
 |---|---|
-| **Generate** | The request fields: sheet, prompt, negative, quality tags, the "Block explicit ratings" box (ticked by default: `rating_safe` and no explicit ratings), the style (anime by default), size, steps, CFG, sampler, seed, count, LoRAs (one `name:weight` per line; the files found in the LoRA folder are listed below the field), and the hires fix and face fix panels (off by default), and the "Don't save the prompt (private)" box. The images go to `output/YYYY-MM-DD/HHMMSS.png` (with `_2`, `_3`, ... when the name is taken), each with its `.aigen.json` report |
-| **Sheets** | Open, create and save character sheets ([sheets.md](sheets.md)) in the sheets folder; an existing sheet is overwritten only with the box ticked |
+| **Generate** | The request fields: sheet (choosing one fills in the fields its settings set), prompt, negative, quality tags, the "Block explicit ratings" box (ticked by default: `rating_safe` and no explicit ratings), the style (anime by default), size, steps, CFG, sampler, seed, count, LoRAs (one `name:weight` per line; the files found in the LoRA folder are listed below the field), and the hires fix and face fix panels (off by default), and the "Don't save the prompt (private)" box. The images go to `output/YYYY-MM-DD/HHMMSS.png` (with `_2`, `_3`, ... when the name is taken), each with its `.aigen.json` report |
+| **Sheets** | Open, create and save character sheets ([sheets.md](sheets.md)) in the sheets folder, with their checkpoint and settings (in TOML; the button "Use the Generate tab's settings and the configured checkpoint" fills both in); an existing sheet is overwritten only with the box ticked |
 | **Gallery** | The newest 60 PNGs of the output folder, private ones included |
 | **Read PNG** | Upload a PNG made by AIGenerator: its request (from the `aigen` chunk) fills the Generate tab, so the image can be made again or varied. A PNG made in private mode has no request: the tab says it has no AIGenerator data |
 

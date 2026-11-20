@@ -169,7 +169,7 @@ def check_loras(loras, where):
     return result
 
 
-def _optional(value, fields, name, where):
+def optional(value, fields, name, where):
     """hires and face_fix: absent, null or false is off; true is on with the defaults; an object is on."""
     if value is None or value is False:
         return None
@@ -194,8 +194,8 @@ def normalize(info, source="the request"):
     request = check_fields(info, REQUEST_FIELDS, source)
     request["cfg"] = float(request["cfg"])
     request["loras"] = check_loras(loras, source)
-    request["hires"] = _optional(hires, HIRES_FIELDS, "hires", source)
-    request["face_fix"] = _optional(face_fix, FACE_FIELDS, "face_fix", source)
+    request["hires"] = optional(hires, HIRES_FIELDS, "hires", source)
+    request["face_fix"] = optional(face_fix, FACE_FIELDS, "face_fix", source)
     if not request["prompt"].strip() and request["sheet"] is None:
         raise RequestError("%s has nothing to generate: 'prompt' is empty and there is no 'sheet'" % source)
     if request["hires"]:

@@ -19,7 +19,7 @@ Each option sets the request field of the same meaning ([contract.md](contract.m
 | `--request FILE` | | A request in JSON; the options below override its fields |
 | `--prompt TEXT` | `prompt` | The scene tags |
 | `--negative TEXT` | `negative` | The negative tags |
-| `--sheet NAME` | `sheet` | A character sheet: a name in the sheets folder or the path of a `.toml` |
+| `--sheet NAME` | `sheet` | A character sheet: a name in the sheets folder or the path of a `.toml`. Its settings fill the fields that neither the options nor `--request` give ([sheets.md](sheets.md)) |
 | `--no-quality` | `quality: false` | Do not add the Pony `score_*` tags |
 | `--style anime\|none` | `style` | The Pony source tags (default: anime); `none` adds none |
 | `--allow-explicit` | `block_explicit: false` | Do not add the tags that block explicit ratings (`rating_safe`, ...) |

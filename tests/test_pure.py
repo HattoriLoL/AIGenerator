@@ -136,6 +136,83 @@ class Sheets(unittest.TestCase):
             sheets.file_name("!!!")
 
 
+SETTINGS_SHEET = {"name": "Mika", "tags": "1girl, short black hair", "checkpoint": "ponyDiffusionV6XL",
+                  "settings": {"width": 832, "height": 1216, "steps": 30, "cfg": 6, "sampler": "dpmpp_2m_karras",
+                               "style": "none", "hires": {"scale": 1.5, "strength": 0.35}, "face_fix": False}}
+
+
+class SheetSettings(unittest.TestCase):
+    """The checkpoint and the [settings] of a sheet (docs/sheets.md, "Settings")."""
+
+    def test_write_and_read_give_the_same(self):
+        s = sheets.check_sheet(SETTINGS_SHEET)
+        self.assertEqual((s["settings"]["cfg"], s["settings"]["style"], s["settings"]["face_fix"]), (6.0, None, None))
+        self.assertEqual(s["settings"]["hires"], {"scale": 1.5, "strength": 0.35, "steps": 15, "upscaler": "model"})
+        self.assertNotIn("quality", s["settings"], "only the given fields")
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "mika.toml")
+            sheets.write_sheet(SETTINGS_SHEET, path)
+            self.assertEqual(sheets.read_sheet(path), s)
+        text = sheets.settings_text(s["settings"])
+        self.assertIn('style = "none"', text)
+        self.assertEqual(sheets.parse_settings(text), s["settings"])
+        self.assertEqual((sheets.settings_text({}), sheets.parse_settings("")), ("", {}))
+        self.assertEqual(sheets.check_sheet({"name": "a"})["settings"], {})
+
+    def test_refusals(self):
+        for settings, fragment in (({"seed": 1}, "'seed'"), ({"steps": 0}, "'steps'"), ({"style": "x"}, "'style'"),
+                                   ({"width": 830}, "'width'"), ({"hires": 3}, "'hires'"),
+                                   ({"hires": {"scale": 9}}, "'scale'"), ({"face_fix": {"x": 1}}, "'x'"),
+                                   ("steps", "not a TOML table")):
+            with self.assertRaises(contract.RequestError) as c:
+                sheets.check_sheet({"name": "a", "settings": settings})
+            self.assertIn(fragment, str(c.exception))
+        with self.assertRaises(contract.RequestError):
+            sheets.check_sheet({"name": "a", "checkpoint": "models/pony.safetensors"})
+        with self.assertRaises(contract.RequestError) as c:
+            sheets.parse_settings("steps = ")
+        self.assertIn("not valid TOML", str(c.exception))
+
+    def test_the_request_wins(self):
+        s = sheets.check_sheet(SETTINGS_SHEET)
+        r = sheets.apply_settings({"prompt": "smile", "steps": 20, "face_fix": True}, s)
+        self.assertEqual((r["steps"], r["cfg"], r["width"], r["face_fix"]), (20, 6.0, 832, True))
+        self.assertEqual(r["hires"]["strength"], 0.35)
+        r = sheets.apply_settings({"hires": {"steps": 9}}, s)
+        self.assertEqual((r["hires"]["scale"], r["hires"]["steps"]), (1.5, 9))
+        self.assertEqual(sheets.apply_settings({"hires": True}, s)["hires"]["strength"], 0.35)
+        self.assertIsNone(sheets.apply_settings({"hires": None}, s)["hires"], "turned off by the request")
+        r = sheets.apply_settings({}, s)
+        r["hires"]["scale"] = 3
+        self.assertEqual(s["settings"]["hires"]["scale"], 1.5, "the sheet is not changed")
+
+    def test_the_options_and_the_sheet(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sheets.write_sheet(SETTINGS_SHEET, os.path.join(folder, "mika.toml"))
+            a = generate.parse_args(["x.png", "--sheet", "mika", "--prompt", "smile", "--steps", "40",
+                                     "--hires-steps", "10"])
+            r = generate.request_from_args(a, folder)
+            self.assertEqual((r["steps"], r["cfg"], r["sampler"], r["style"], r["face_fix"]),
+                             (40, 6.0, "dpmpp_2m_karras", None, None))
+            self.assertEqual((r["hires"]["scale"], r["hires"]["strength"], r["hires"]["steps"]), (1.5, 0.35, 10))
+            r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "smile"]), folder)
+            self.assertEqual(r["steps"], 25, "no sheet: the defaults")
+            with self.assertRaises(contract.RequestError):
+                generate.request_from_args(generate.parse_args(["x.png", "--sheet", "nobody"]), folder)
+        self.assertEqual(sheets.fill_request(["not", "a", "request"], "/p"), ["not", "a", "request"])
+        self.assertEqual(sheets.fill_request({"sheet": 3}, "/p"), {"sheet": 3})
+
+    def test_the_checkpoint(self):
+        s = sheets.check_sheet(SETTINGS_SHEET)
+        sheets.check_checkpoint(s, os.path.join("models", "checkpoints", "ponyDiffusionV6XL.safetensors"))
+        sheets.check_checkpoint(dict(s, checkpoint="PonyDiffusionV6XL.SAFETENSORS"), "/m/ponyDiffusionV6XL.ckpt")
+        sheets.check_checkpoint(dict(s, checkpoint=""), "/m/other.safetensors")
+        with self.assertRaises(contract.RequestError) as c:
+            sheets.check_checkpoint(s, "/m/other.safetensors")
+        self.assertIn("'ponyDiffusionV6XL'; the configured one is 'other'", str(c.exception))
+        self.assertEqual(sheets.model_name("/m/x.y.safetensors"), "x.y")
+
+
 class Loras(unittest.TestCase):
     def test_parse_list(self):
         self.assertEqual(loras.parse_list("a:0.5\nb, c:-1"),
@@ -263,7 +340,7 @@ class Privacy(unittest.TestCase):
                                     (["x.png", "--save-prompts"], does_not, False)):
             a = generate.parse_args(argv + ["--prompt", "1girl"])
             self.assertEqual(generate.private_mode(a, cfg), expected, argv)
-            self.assertNotIn("private", generate.request_from_args(a))
+            self.assertNotIn("private", generate.request_from_args(a, ""))
 
     def test_the_batch_takes_the_same_options(self):
         from aigen import batch
@@ -437,20 +514,20 @@ class Math(unittest.TestCase):
 
 class CommandLine(unittest.TestCase):
     def test_style_and_explicit_from_the_options(self):
-        r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl"]))
+        r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl"]), "")
         self.assertEqual((r["style"], r["block_explicit"]), ("anime", True))
         r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl", "--style", "none",
-                                                            "--allow-explicit"]))
+                                                            "--allow-explicit"]), "")
         self.assertEqual((r["style"], r["block_explicit"]), (None, False))
 
     def test_hires_options_turn_on_the_hires(self):
-        r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl", "--hires-scale", "2"]))
+        r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl", "--hires-scale", "2"]), "")
         self.assertEqual(r["hires"]["scale"], 2.0)
         self.assertIsNone(r["face_fix"])
 
     def test_face_fix_options_turn_on_the_face_fix(self):
         r = generate.request_from_args(generate.parse_args(["x.png", "--prompt", "1girl", "--face-fix-max", "2",
-                                                            "--no-quality"]))
+                                                            "--no-quality"]), "")
         self.assertEqual((r["face_fix"]["max_faces"], r["quality"], r["hires"]), (2, False, None))
 
 
@@ -461,6 +538,20 @@ class Form(unittest.TestCase):
         v = web.form_from_request(r)
         self.assertEqual(set(v), set(web.FIELDS))
         self.assertEqual(web.request_from_form(v), r)
+
+    def test_the_settings_of_a_sheet(self):
+        s = sheets.check_sheet(SETTINGS_SHEET)["settings"]
+        v = web.form_from_settings(s)
+        self.assertEqual((v["steps"], v["style"], v["hires"], v["hires_strength"], v["face_fix"]),
+                         (30, web.NO_STYLE, True, 0.35, False))
+        self.assertNotIn("quality", v)
+        self.assertLessEqual(set(v), set(web.FIELDS))
+        self.assertEqual(web.form_from_settings({"face_fix": {"max_faces": 2}})["face_fix_max"], 2)
+        r = request(sheet="mika", **sheets.apply_settings({}, sheets.check_sheet(SETTINGS_SHEET)))
+        got = web.settings_from_form(dict(web.form_from_request(r), prompt=""))
+        self.assertEqual(got, sheets.settings_of(r))
+        self.assertEqual((got["steps"], got["quality"], got["face_fix"]), (30, True, None))
+        self.assertEqual(sheets.parse_settings(sheets.settings_text(got)), got)
 
     def test_off_and_without_a_sheet(self):
         v = web.form_from_request(request())

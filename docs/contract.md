@@ -23,7 +23,7 @@ The same in `bin/aigen.sh` and `bin/aigen_batch.sh`:
 |---|---|
 | 0 | Success |
 | 1 | An image could not be made: the model did not load, the GPU ran out of memory, a stage failed. In batch mode: some request failed |
-| 2 | The request is wrong and nothing was loaded or written: an invalid option or field, a missing sheet, LoRA, checkpoint, upscaler or detector, a missing library, an output that already exists |
+| 2 | The request is wrong and nothing was loaded or written: an invalid option or field, a missing sheet, LoRA, checkpoint, upscaler or detector, a sheet made with another checkpoint, a missing library, an output that already exists |
 
 Every error message starts with `ERROR:`.
 
@@ -37,7 +37,7 @@ fields of `--request` ([options.md](options.md)).
 | `request_version` | 1 | 1 | Format version |
 | `prompt` | text | `""` | The scene tags, comma-separated, with AUTOMATIC1111 weights (`(tag:1.2)`) |
 | `negative` | text | `""` | The negative tags |
-| `sheet` | text or null | null | A character sheet: a name (looked up as `<name>.toml` in the sheets folder) or a path (ending in `.toml` or containing `/`, relative to the current folder) |
+| `sheet` | text or null | null | A character sheet: a name (looked up as `<name>.toml` in the sheets folder) or a path (ending in `.toml` or containing `/`, relative to the current folder). Its `[settings]` fill the fields the request does not give ([sheets.md](sheets.md)) |
 | `quality` | bool | true | Put the Pony quality tags in front of the prompt and the negative ([how-it-works.md](how-it-works.md)) |
 | `style` | `"anime"` or null | `"anime"` | Pony source tags: `"anime"` adds `source_anime` to the prompt and `source_cartoon, source_furry, source_pony, 3d, realistic, photorealistic` to the negative; null adds none |
 | `block_explicit` | bool | true | Block explicit content ratings: adds `rating_safe` to the prompt and `rating_questionable, rating_explicit` to the negative; false adds no rating tags (write your own) |

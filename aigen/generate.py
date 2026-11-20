@@ -105,8 +105,9 @@ def _merge_optional(base, field, turn_on, values):
         base[field] = dict(current if isinstance(current, dict) else {}, **values)
 
 
-def request_from_args(a):
-    """The normalized request: the one of --request (or an empty one), with the given options on top."""
+def request_from_args(a, sheets_folder):
+    """The normalized request: the one of --request (or an empty one), with the given options on top and, in the
+    fields neither gives, the settings of the sheet (looked up in `sheets_folder`)."""
     base = contract.read_request(a.request) if a.request else {}
     if not isinstance(base, dict):
         raise contract.RequestError("the request %s is not a JSON object" % a.request)
@@ -126,6 +127,7 @@ def request_from_args(a):
     _merge_optional(base, "hires", a.hires, {k: getattr(a, o) for k, o in HIRES.items() if getattr(a, o) is not None})
     _merge_optional(base, "face_fix", a.face_fix,
                     {k: getattr(a, o) for k, o in FACE_FIX.items() if getattr(a, o) is not None})
+    base = sheets.fill_request(base, sheets_folder)
     return contract.normalize(base, "the request" if not a.request else "the request " + os.path.basename(a.request))
 
 
@@ -140,8 +142,9 @@ class Job:
 
 @stages.declare(reads=("request", "cfg", "output"), writes=("sheet", "report"))
 def check_request(t):
-    """Everything that can be checked without loading the model: the libraries, the model files, the sheet, the LoRAs
-    and the output. A problem here is a RequestError: nothing was loaded or written."""
+    """Everything that can be checked without loading the model: the libraries, the model files, the sheet (and that
+    the checkpoint is the sheet's), the LoRAs and the output. A problem here is a RequestError: nothing was loaded or
+    written."""
     r, cfg = t.request, t.cfg
     needed = model.LIBRARIES + (model.HIRES_LIBRARIES if r["hires"] else ()) + \
         (model.FACE_LIBRARIES if r["face_fix"] else ())
@@ -154,6 +157,8 @@ def check_request(t):
     if r["face_fix"] and not os.path.isfile(cfg.face_detector):
         raise contract.RequestError("face detector not found: " + cfg.face_detector)
     t.sheet = sheets.read_sheet(sheets.resolve(r["sheet"], cfg.sheets_folder)) if r["sheet"] else None
+    if t.sheet:
+        sheets.check_checkpoint(t.sheet, cfg.checkpoint)
     for lora in (t.sheet["loras"] if t.sheet else []) + r["loras"]:
         if not loras.find_file(cfg.loras_folder, lora["name"]):
             raise contract.RequestError("LoRA not found: '%s' (in the folder %s)" % (lora["name"], cfg.loras_folder))
@@ -200,7 +205,7 @@ def main(argv=None):
     a = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         cfg = config.read()
-        request = request_from_args(a)
+        request = request_from_args(a, cfg.sheets_folder)
         run(request, os.path.abspath(a.output), model.Session(cfg), cfg, notify=print, private=private_mode(a, cfg))
     except contract.RequestError as e:
         print("ERROR: %s" % e, file=sys.stderr)
