@@ -22,7 +22,18 @@
       "Bash(./bin/open_web.sh:*)",
       "Bash(.venv/bin/python -m aigen.generate:*)",
       "Bash(.venv/bin/python -m aigen.batch:*)",
-      "Bash(.venv/bin/python -m aigen.web:*)"
+      "Bash(.venv/bin/python -m aigen.web:*)",
+      "Bash(aigen.bat:*)",
+      "Bash(aigen_batch.bat:*)",
+      "Bash(aigen_web.bat:*)",
+      "Bash(open_web.bat:*)",
+      "Bash(./aigen.bat:*)",
+      "Bash(./aigen_batch.bat:*)",
+      "Bash(./aigen_web.bat:*)",
+      "Bash(./open_web.bat:*)",
+      "Bash(.venv/Scripts/python.exe -m aigen.generate:*)",
+      "Bash(.venv/Scripts/python.exe -m aigen.batch:*)",
+      "Bash(.venv/Scripts/python.exe -m aigen.web:*)"
     ]
   }
 }

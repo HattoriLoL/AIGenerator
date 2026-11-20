@@ -199,13 +199,20 @@ class Structure(unittest.TestCase):
 
 
 class Launchers(unittest.TestCase):
-    """The launchers in bin/: all of them find Python through bin/_python.sh (the lookup in one place) and stop with 2
-    without it."""
+    """The launchers: on Linux the ones in bin/ find Python through bin/_python.sh, on Windows the .bat files in the
+    root through bin\\_python.bat (the lookup in one place), and all of them stop with 2 without it. The .bat files
+    are checked without Windows: CRLF and ASCII only (what cmd reads)."""
 
     CALLERS = ("aigen.sh", "aigen_batch.sh", "aigen_web.sh")
+    BAT_CALLERS = {"aigen.bat": "generate", "aigen_batch.bat": "batch", "aigen_web.bat": "web",
+                   "open_web.bat": "web", "setup.bat": "install"}
 
     def read(self, name):
         with open(os.path.join(ROOT, "bin", name), encoding="utf-8") as f:
+            return f.read()
+
+    def read_root(self, name):
+        with open(os.path.join(ROOT, name), "rb") as f:
             return f.read()
 
     def test_the_lookup_in_one_place(self):
@@ -215,20 +222,80 @@ class Launchers(unittest.TestCase):
             self.assertIn('[ -n "$PY" ] || exit 2', text, name)
             self.assertNotIn(".venv", text, name + ": the lookup is the one in bin/_python.sh")
 
+    def test_the_windows_lookup_in_one_place(self):
+        found = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "*.bat")))
+        self.assertEqual(found, sorted(self.BAT_CALLERS))
+        for name, mod in self.BAT_CALLERS.items():
+            text = self.read_root(name).decode("ascii")
+            self.assertIn('call "%~dp0bin\\_python.bat"', text, name)
+            self.assertIn("-m aigen.%s " % mod, text, name)
+            for other in ("AIGEN_PYTHON", ".venv"):
+                self.assertNotIn(other, text, name + ": the lookup is the one in bin\\_python.bat")
+            if "if not defined PY exit /b 2" not in text:  # the ones that wait for a key first
+                self.assertIn("if not defined PY goto :no_python", text, name)
+                self.assertRegex(text.split("\r\n:no_python\r\n", 1)[1], r"^(pause\r\n)?(exit /b 2|set \"CODE=2\")",
+                                 name)
+        lookup = self.read_root(os.path.join("bin", "_python.bat")).decode("ascii")
+        self.assertIn("AIGEN_PYTHON", lookup)
+        self.assertIn(".venv\\Scripts\\python.exe", lookup)
+        self.assertIn('call "%~dp0..\\bin\\_python.bat"', self.read_root(os.path.join("tests", "run.bat")).decode())
+
+    def test_the_bat_files_have_crlf_and_ascii(self):
+        names = glob.glob(os.path.join(ROOT, "**", "*.bat"), recursive=True)
+        self.assertGreaterEqual(len(names), 7)
+        for name in names:
+            with open(name, "rb") as f:
+                data = f.read()
+            data.decode("ascii")
+            self.assertEqual(data.count(b"\n"), data.count(b"\r\n"), name + ": every line with CRLF")
+        with open(os.path.join(ROOT, ".gitattributes"), encoding="utf-8") as f:
+            self.assertIn("*.bat text eol=crlf", f.read().splitlines())
+
     def test_the_shortcut_finds_python_the_same_way_and_opens_the_browser(self):
         text = self.read("open_web.sh")
         self.assertIn('/_python.sh"', text)
         self.assertIn("-m aigen.web --open", text)
-        self.assertIn("open_web.sh", self.read("install_shortcut.sh"))
+        bat = self.read_root("open_web.bat").decode("ascii")
+        self.assertIn("-m aigen.web --open", bat)
+        self.assertIn('start "" "http://127.0.0.1:%PORT%/"', bat)
+        from aigen import install
+        self.assertIn("open_web.sh", install.desktop_entry("/r"))
+        self.assertTrue(install.windows_shortcut_env("r", environ={})["AIGEN_SHORTCUT_TARGET"]
+                        .endswith("open_web.bat"))
 
     def test_each_launcher_calls_its_module(self):
         for name, mod in zip(self.CALLERS, ("generate", "batch", "web")):
             self.assertIn("-m aigen.%s " % mod, self.read(name), name)
             self.assertTrue(os.path.isfile(os.path.join(ROOT, "aigen", mod + ".py")))
+        for mod in set(self.BAT_CALLERS.values()):
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, "aigen", mod + ".py")), mod)
 
     def test_they_are_executable(self):
-        for name in self.CALLERS + ("open_web.sh", "install.sh", "install_shortcut.sh", "download_extras.sh"):
+        for name in self.CALLERS + ("open_web.sh", os.path.join("..", "setup.sh")):
             self.assertTrue(os.access(os.path.join(ROOT, "bin", name), os.X_OK), name)
+
+    def test_the_two_setups_offer_the_same_options(self):
+        from aigen import install
+        option = re.compile(r"(?<![\w-])--[a-z][a-z-]*[a-z]")
+        parser = {o for a in install.parser()._actions for o in a.option_strings} - {"-h", "--help"}
+        sh = set(option.findall(self.read_root("setup.sh").decode("utf-8"))) - {"--help"}
+        bat = set(option.findall(self.read_root("setup.bat").decode("ascii"))) - {"--help"}
+        expected = {"--no-models", "--no-shortcut", "--verify", "--no-gpu-check", "--icon", "--remove-shortcut"}
+        self.assertEqual(parser, expected)
+        self.assertEqual(sh, expected)
+        self.assertEqual(bat, expected)
+        self.assertIn("exec \"$PY\" -m aigen.install", self.read_root("setup.sh").decode("utf-8"))
+        self.assertIn('/bin/_python.sh"', self.read_root("setup.sh").decode("utf-8"))
+
+    def test_the_command_by_platform(self):
+        self.assertEqual(contract.command("aigen"), "aigen.bat" if os.name == "nt" else "bin/aigen.sh")
+        self.assertEqual(contract.command("aigen_web", windows=False), "bin/aigen_web.sh")
+        self.assertEqual(contract.command("aigen_web", windows=True), "aigen_web.bat")
+        self.assertEqual(contract.command("setup", windows=False), "./setup.sh")
+        self.assertEqual(contract.command("setup", windows=True), "setup.bat")
+        for windows in (False, True):
+            for name in ("aigen", "aigen_batch", "aigen_web", "setup"):
+                self.assertTrue(os.path.isfile(os.path.join(ROOT, contract.command(name, windows))), name)
 
 
 class Docs(unittest.TestCase):

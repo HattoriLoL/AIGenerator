@@ -12,8 +12,9 @@ thin layers over the same `generate.run`.
 ## Folders
 | Folder | Contents | When to change it |
 |---|---|---|
-| `aigen/` | The code. `generate.py` is the program (the options, the job and the sequence of stages); the stages are `generate.check_request`, `prompts.py`, `model.py`, `loras.py`, `generation.py`, `hires.py`, `face.py` and `output.py` (see `docs/how-it-works.md`); `contract.py`, `stages.py`, `config.py`, `sheets.py` and `metadata.py` are pure shared parts; `batch.py` and `web.py` are the other entry points | A change in behavior |
-| `bin/` | The launchers (`aigen.sh`, `aigen_batch.sh`, `aigen_web.sh`, and `open_web.sh` for the desktop shortcut), the Python lookup (`_python.sh`), the installers (`install.sh`, `install_shortcut.sh`), `download_extras.sh` and `check_secrets.py` | A change in how the tool is called or installed |
+| `aigen/` | The code. `generate.py` is the program (the options, the job and the sequence of stages); the stages are `generate.check_request`, `prompts.py`, `model.py`, `loras.py`, `generation.py`, `hires.py`, `face.py` and `output.py` (see `docs/how-it-works.md`); `contract.py`, `stages.py`, `config.py`, `sheets.py` and `metadata.py` are pure shared parts; `batch.py` and `web.py` are the other entry points; `install.py` is the second half of setup (folders, models, `config.local.ini`, shortcut) | A change in behavior |
+| root | `setup.sh` and `setup.bat` (one-command setup: GPU check, uv, `uv sync`, then `python -m aigen.install`) and the Windows launchers (`aigen.bat`, `aigen_batch.bat`, `aigen_web.bat`, `open_web.bat`; CRLF, ASCII only) | A change in how the tool is installed or called on Windows |
+| `bin/` | The Linux launchers (`aigen.sh`, `aigen_batch.sh`, `aigen_web.sh`, and `open_web.sh` for the desktop shortcut), the Python lookups (`_python.sh`, and `_python.bat` for Windows) and `check_secrets.py` | A change in how the tool is called |
 | `tests/` | The automated tests | Every change in behavior |
 | `examples/` | An example request and character sheet, read by the tests | When a new test needs another case |
 | `docs/` | The documentation, one file per topic | When the behavior changes |
@@ -26,7 +27,9 @@ bin/aigen.sh output.png [options]
 bin/aigen_batch.sh requests_folder output_folder
 bin/aigen_web.sh
 ```
-The launchers find Python through the `AIGEN_PYTHON` variable or the `.venv/` that `bin/install.sh` creates. The
+(on Windows `aigen.bat`, `aigen_batch.bat`, `aigen_web.bat`; `docs/windows.md`). Setup is `./setup.sh` or
+`setup.bat` (`docs/installation.md`). The launchers find Python through the `AIGEN_PYTHON` variable or the `.venv/`
+that setup creates (the lookup is in `bin/_python.sh` and `bin/_python.bat` only). The
 model paths come from the `AIGEN_*` variables, `config.local.ini` (ignored by git) or `config.ini`. The versioned
 `config.ini` is only a template: a machine's paths go in `config.local.ini` or in the variables, never in a
 versioned file.
@@ -35,8 +38,8 @@ versioned file.
 | | Command | What it runs | When |
 |---|---|---|---|
 | **Contract** | `python3 tests/test_contract.py` | the request contract, the exit codes, the code rules, the launchers, the docs that are checked against the code and the isolation check | before every commit, and on every push (through the hook) |
-| **Pure modules** | `python3 tests/test_pure.py` | prompts and weights, sheets, LoRA lists, metadata, config, the stage sequences of each mode, the face-box math and the web interface's conversions | before every commit, and on every push (through the hook) |
-| **All** | `tests/run.sh` | both | before every commit that touches `aigen/` or `bin/` |
+| **Pure modules** | `python3 tests/test_pure.py` | prompts and weights, sheets, LoRA lists, metadata, config, the stage sequences of each mode, the face-box math, the web interface's conversions and the setup module (on temporary folders and `file://` URLs: no network) | before every commit, and on every push (through the hook) |
+| **All** | `tests/run.sh` (Windows: `tests\run.bat`) | both | before every commit that touches `aigen/`, `bin/` or a launcher |
 
 They need any Python 3.11+ and nothing else: no PyTorch, no GPU, no model. **No automated test generates, opens or
 compares an image.** Whether an image is good is judged by a person, by running the tool; a change that affects the

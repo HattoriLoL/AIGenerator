@@ -1,3 +1,5 @@
 # Scripts with LF (Linux bash does not read CRLF)
 *.sh text eol=lf
 .githooks/* text eol=lf
+# The Windows launchers with CRLF (cmd reads labels and lines with LF wrongly in some cases)
+*.bat text eol=crlf

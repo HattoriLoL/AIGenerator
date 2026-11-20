@@ -27,7 +27,7 @@ def check_libraries(names):
     missing = [n for n in names if importlib.util.find_spec(n) is None]
     if missing:
         raise contract.RequestError("missing libraries (%s): install the environment with %s"
-                                    % (", ".join(missing), contract.command("install")))
+                                    % (", ".join(missing), contract.command("setup")))
 
 
 def device():

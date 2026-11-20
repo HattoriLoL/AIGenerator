@@ -19,5 +19,6 @@
   GB of GPU memory. Use `"upscaler": "lanczos"` or a smaller size if it runs out.
 - **No image-to-image or inpaint input** from the user yet: the image-to-image and inpaint pipelines are only used
   inside the hires fix and the face fix.
-- **Linux only** for now: there are no Windows launchers.
+- **NVIDIA GPUs only** (PyTorch for CUDA 12.8). **Windows is not tested yet**: the launchers and setup were written
+  and checked on Linux ([windows.md](windows.md) has the checklist for a first run).
 - **One GPU, one generation at a time** in the web interface.

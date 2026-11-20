@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What the desktop shortcut runs (bin/install_shortcut.sh): if the interface is already up, it only opens the browser;
+# What the desktop shortcut runs (setup.sh creates it): if the interface is already up, it only opens the browser;
 # otherwise it starts the interface in this terminal and opens the browser when it is ready. Closing the terminal
 # stops the interface and frees the GPU memory.
 . "$(dirname "${BASH_SOURCE[0]}")/_python.sh"

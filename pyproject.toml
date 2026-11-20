@@ -1,4 +1,4 @@
-# The AIGenerator environment (bin/install.sh runs "uv sync"). Every dependency has its license in docs/licenses.md,
+# The AIGenerator environment (setup.sh and setup.bat run "uv sync"). Every dependency has its license in docs/licenses.md,
 # checked by tests/test_contract.py: only licenses that allow commercial use.
 [project]
 name = "aigen"
