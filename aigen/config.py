@@ -1,5 +1,5 @@
-"""The configuration: where the model, the LoRAs, the upscaler and the face detector are, and the sheets and output
-folders.
+"""The configuration: where the model, the LoRAs, the upscaler and the face detector are, the sheets and output
+folders, the web port and whether the prompts are saved in the outputs ([privacy] save_prompts).
 
 The order, from what weighs most to what weighs least: the environment variable (AIGEN_CHECKPOINT, ...),
 config.local.ini (outside git: a machine's paths) and config.ini (versioned, only the template). A relative path is
@@ -25,7 +25,10 @@ KEYS = {
     "sheets_folder": ("folders", "sheets", "AIGEN_SHEETS", "characters", True),
     "output_folder": ("folders", "output", "AIGEN_OUTPUT", "output", True),
     "port": ("web", "port", "AIGEN_PORT", "7860", False),
+    "save_prompts": ("privacy", "save_prompts", "AIGEN_SAVE_PROMPTS", "true", False),
 }
+TRUE = ("true", "yes", "1", "on")
+FALSE = ("false", "no", "0", "off")
 
 
 class Config:
@@ -56,6 +59,16 @@ def _port(text):
     return port
 
 
+def boolean(text, name):
+    """true/yes/1/on or false/no/0/off (any case) as a bool; anything else is a RequestError naming the key."""
+    value = text.strip().lower()
+    if value in TRUE:
+        return True
+    if value in FALSE:
+        return False
+    raise contract.RequestError("%s is %r; expected true or false (yes/no, 1/0, on/off)" % (name, text))
+
+
 def read(root=ROOT, environ=None):
     """Reads config.ini and config.local.ini from `root` and the AIGEN_* variables from `environ` (default:
     os.environ)."""
@@ -72,4 +85,5 @@ def read(root=ROOT, environ=None):
             value = ini.get(section, key, fallback=default)
         values[name] = _path(value, root) if is_path else value.strip()
     values["port"] = _port(values["port"])
+    values["save_prompts"] = boolean(values["save_prompts"], "[privacy] save_prompts (or AIGEN_SAVE_PROMPTS)")
     return Config(values)

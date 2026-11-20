@@ -89,8 +89,25 @@ For an output `x.png` (or `x_001.png`, `x_002.png`, ... with `count` > 1):
     from it.
 - **`x.aigen.json`**, the report: `format_version`, `aigen` (the version), `png`, `request`, `model` (the checkpoint
   file name), `seconds`, `timings` (seconds per stage), `sheet` (the sheet's name or null), `prompt` (`positive` and
-  `negative`), `loras`, `generation` and, when on, `hires` and `face_fix` (`found`: the faces found, `boxes`: their
-  boxes, and `strength`).
+  `negative`), `loras`, `generation`, when on, `hires` and `face_fix` (`found`: the faces found, `boxes`: their
+  boxes, and `strength`), and `private` (false; true in private mode, below).
+
+### Private mode (the prompts not saved)
+
+With `--private` ([options.md](options.md)), the web interface's "Don't save the prompt (private)" box
+([web.md](web.md)) or `[privacy] save_prompts = false` in the config ([installation.md](installation.md)), nothing
+written tells what the image is:
+
+- **`x.png`** has **no text chunk at all**: neither `parameters` nor `aigen`. The request cannot be rebuilt from it
+  (the "Read PNG" tab says it has no AIGenerator data).
+- **`x.aigen.json`** is still written, with `"private": true`, but its `request` has no `prompt`, `negative`, `sheet`
+  or `loras`, its `face_fix` (when on) has no `prompt`, and the report has no `sheet`, `prompt` or `loras` entry. What
+  stays: `format_version`, `aigen`, `png`, `model`, `seconds`, `timings`, `generation`, `hires`, `face_fix` (the
+  faces found, their boxes and the strength) and, in `request`, `request_version`, `seed`, `width`, `height`,
+  `steps`, `cfg`, `sampler`, `count`, `quality`, `style`, `block_explicit`, `hires` and the `face_fix` numbers. This
+  `request` is not a full request: given back to the tool, it is refused (it has nothing to generate).
+- On a failed web generation, `aigen-web.log` gets the time and the error only, without the request.
+- The batch summary holds no prompt in either mode.
 
 No output is ever overwritten: an existing PNG or report is refused before anything is loaded (code 2).
 
@@ -105,3 +122,7 @@ No output is ever overwritten: an existing PNG or report is refused before anyth
 - Version 1, renamed: before anyone depended on the formats, every field, value and message was renamed to English
   (for example `versao_pedido` became `request_version`, `rosto` became `face_fix` and the upscaler `"modelo"` became
   `"model"`). The version number stayed at 1; PNGs and files written with the Portuguese names are not read.
+- Version 1, new field: the report's `private` (always present; true when the prompts were not saved). In private
+  mode the report leaves out `prompt`, `sheet` and `loras`, and its `request` leaves out `prompt`, `negative`,
+  `sheet`, `loras` and `face_fix.prompt`; normal mode, the default, writes every field as before, so the version
+  stayed at 1.

@@ -182,6 +182,114 @@ class Metadata(unittest.TestCase):
             with self.assertRaises(contract.RequestError):
                 metadata.request_from_png(texts)
 
+    def test_png_without_the_chunk_says_private_mode_or_another_program(self):
+        for texts in ({}, {"parameters": "1girl\nSteps: 25"}):
+            with self.assertRaises(contract.RequestError) as c:
+                metadata.request_from_png(texts)
+            self.assertIn("has no AIGenerator data", str(c.exception))
+            self.assertIn("private mode", str(c.exception))
+            self.assertIn("another program", str(c.exception))
+
+
+def _private_request():
+    return request(prompt="1girl, red scarf", negative="blurry", sheet="aiko", seed=5, width=832, height=1216,
+                   steps=30, cfg=6.5, sampler="dpmpp_2m", quality=False, style=None, block_explicit=False,
+                   loras=[{"name": "style_a", "weight": 0.7}], hires={"scale": 2.0},
+                   face_fix={"strength": 0.3, "prompt": "detailed eyes", "max_faces": 2})
+
+
+ENTRIES = {"sheet": "aiko", "prompt": {"positive": "score_9, 1girl, red scarf", "negative": "score_4, blurry"},
+           "loras": [{"name": "style_a", "weight": 0.7}], "generation": {"width": 832, "height": 1216, "seed": 5},
+           "hires": {"width": 1664, "height": 2432, "upscaler": "model", "strength": 0.4},
+           "face_fix": {"found": 1, "boxes": [[10, 20, 30, 30]], "strength": 0.3}}
+
+
+class Privacy(unittest.TestCase):
+    """Private mode: the prompts are not saved (docs/contract.md, "The outputs")."""
+
+    def report(self, private):
+        return output.build_report(_private_request(), ENTRIES, "a.png", "pony.safetensors", 12.5,
+                                   {"prompts.stage": 0.1}, private=private)
+
+    def test_redact_request_removes_what_tells_what_the_image_is(self):
+        r = _private_request()
+        before = json.loads(json.dumps(r))
+        kept = metadata.redact_request(r)
+        self.assertEqual(r, before, "the given request is not changed")
+        for field in ("prompt", "negative", "sheet", "loras"):
+            self.assertNotIn(field, kept)
+        self.assertNotIn("prompt", kept["face_fix"])
+        self.assertEqual(kept["face_fix"], {"strength": 0.3, "steps": 20, "margin": 0.3, "max_faces": 2})
+        for field in ("seed", "width", "height", "steps", "cfg", "sampler", "quality", "style", "block_explicit",
+                      "count", "hires", "request_version"):
+            self.assertEqual(kept[field], r[field], field)
+        self.assertNotIn("red scarf", json.dumps(kept))
+        self.assertIsNone(metadata.redact_request(request())["face_fix"])
+
+    def test_private_report(self):
+        rep = self.report(True)
+        self.assertIs(rep["private"], True)
+        for entry in ("prompt", "sheet", "loras"):
+            self.assertNotIn(entry, rep)
+        self.assertEqual(rep["request"], metadata.redact_request(_private_request()))
+        for entry in ("generation", "hires", "face_fix"):
+            self.assertEqual(rep[entry], ENTRIES[entry])
+        self.assertEqual((rep["model"], rep["seconds"], rep["timings"], rep["png"]),
+                         ("pony.safetensors", 12.5, {"prompts.stage": 0.1}, "a.png"))
+        text = json.dumps(rep)
+        for secret in ("red scarf", "blurry", "aiko", "style_a", "detailed eyes"):
+            self.assertNotIn(secret, text)
+        self.assertIn("sheet", ENTRIES, "the given entries are not changed")
+
+    def test_normal_report_keeps_everything_and_says_not_private(self):
+        rep = self.report(False)
+        self.assertIs(rep["private"], False)
+        self.assertEqual(rep["request"], _private_request())
+        for entry, value in ENTRIES.items():
+            self.assertEqual(rep[entry], value)
+
+    def test_png_chunks(self):
+        r = _private_request()
+        self.assertEqual(metadata.png_chunks(r, "pos", "neg", "pony", r["loras"], private=True), {})
+        chunks = metadata.png_chunks(r, "pos", "neg", "pony", r["loras"], private=False)
+        self.assertEqual(set(chunks), {metadata.A1111_KEY, metadata.AIGEN_KEY})
+        self.assertEqual(chunks[metadata.A1111_KEY], metadata.parameters_text(r, "pos", "neg", "pony", r["loras"]))
+        self.assertEqual(metadata.request_from_png(chunks), r)
+
+    def test_the_options_override_the_config(self):
+        saves, does_not = config.Config({"save_prompts": True}), config.Config({"save_prompts": False})
+        for argv, cfg, expected in ((["x.png"], saves, False), (["x.png"], does_not, True),
+                                    (["x.png", "--private"], saves, True),
+                                    (["x.png", "--save-prompts"], does_not, False)):
+            a = generate.parse_args(argv + ["--prompt", "1girl"])
+            self.assertEqual(generate.private_mode(a, cfg), expected, argv)
+            self.assertNotIn("private", generate.request_from_args(a))
+
+    def test_the_batch_takes_the_same_options(self):
+        from aigen import batch
+        a = batch.parse_args(["in", "out", "--private"])
+        self.assertTrue(generate.private_mode(a, config.Config({"save_prompts": True})))
+        a = batch.parse_args(["in", "out"])
+        self.assertFalse(generate.private_mode(a, config.Config({"save_prompts": True})))
+
+    def test_the_web_private_box(self):
+        self.assertFalse(web.private_default(config.Config({"save_prompts": True})))
+        self.assertTrue(web.private_default(config.Config({"save_prompts": False})))
+        self.assertNotIn("private", web.FIELDS)
+        v = web.form_from_request(_private_request())
+        for private in (True, False):
+            form, got = web.split_values([v[k] for k in web.FIELDS] + [private])
+            self.assertIs(got, private)
+            self.assertEqual(web.request_from_form(form), _private_request())
+
+    def test_the_web_failure_log_without_the_request(self):
+        with tempfile.TemporaryDirectory() as folder:
+            now = datetime.datetime(2026, 1, 2, 3, 4, 5)
+            path = web.log_failure(folder, {"prompt": "red scarf"}, "Traceback ...\nError: x\n", now, private=True)
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            self.assertEqual(text, "=== 2026-01-02T03:04:05\nTraceback ...\nError: x\n")
+
 
 class Config(unittest.TestCase):
     def test_defaults_local_and_variable(self):
@@ -198,6 +306,22 @@ class Config(unittest.TestCase):
             self.assertEqual((c.checkpoint, c.port), ("/other/x.safetensors", 8000))
             with self.assertRaises(contract.RequestError):
                 config.read(root, {"AIGEN_PORT": "port"})
+
+    def test_save_prompts(self):
+        with tempfile.TemporaryDirectory() as root:
+            open(os.path.join(root, "config.ini"), "w").close()
+            self.assertIs(config.read(root, {}).save_prompts, True)
+            for text, expected in (("false", False), ("No", False), ("0", False), ("OFF", False), ("true", True),
+                                   ("YES", True), ("1", True), ("on", True), (" False ", False)):
+                self.assertIs(config.read(root, {"AIGEN_SAVE_PROMPTS": text}).save_prompts, expected, text)
+            with open(os.path.join(root, "config.local.ini"), "w", encoding="utf-8") as f:
+                f.write("[privacy]\nsave_prompts = no\n")
+            self.assertIs(config.read(root, {}).save_prompts, False)
+            self.assertIs(config.read(root, {"AIGEN_SAVE_PROMPTS": "yes"}).save_prompts, True)
+            for bad in ("maybe", "", "2"):
+                with self.assertRaises(contract.RequestError) as c:
+                    config.read(root, {"AIGEN_SAVE_PROMPTS": bad})
+                self.assertIn("save_prompts", str(c.exception))
 
     def test_the_repository_config_ini_has_no_machine_path(self):
         c = config.read(ROOT, {})

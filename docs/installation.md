@@ -139,6 +139,7 @@ Or in environment variables, which win over both files:
 | `AIGEN_SHEETS` | `[folders] sheets` | `characters` |
 | `AIGEN_OUTPUT` | `[folders] output` | `output` (where the web interface writes) |
 | `AIGEN_PORT` | `[web] port` | `7860` |
+| `AIGEN_SAVE_PROMPTS` | `[privacy] save_prompts` | `true`; `false` turns private mode on for every run: the prompts are not saved in the PNG or the report ([contract.md](contract.md), "Private mode"). Accepts `true`/`false`, `yes`/`no`, `1`/`0`, `on`/`off`, in any case; `--private`, `--save-prompts` and the web interface's box override it for one run |
 
 Relative paths are relative to the repository root; `~` is the home folder. `models/`, `characters/` and `output/`
 are ignored by git.

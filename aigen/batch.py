@@ -4,7 +4,8 @@
 
 Each request x.json becomes output_folder/x.png (or x_001.png ... with "count"). A wrong or failed request does not
 stop the others; the summary goes to output_folder/batch.aigen.json. Exit code: 0 all ok; 1 some failed; 2 the batch
-itself is wrong (a folder that does not exist, no requests, a summary that already exists).
+itself is wrong (a folder that does not exist, no requests, a summary that already exists). --private and
+--save-prompts override the config's [privacy] save_prompts for every request of the batch.
 """
 import json
 import os
@@ -22,6 +23,7 @@ def parse_args(argv):
     p.add_argument("requests", help="the folder with the requests (*.json, docs/contract.md)")
     p.add_argument("output", help="the folder where the PNGs and the batch.aigen.json summary are written")
     p.add_argument("--version", action="version", version="AIGenerator " + VERSION)
+    generate.privacy_options(p)
     return p.parse_args(argv)
 
 
@@ -34,13 +36,13 @@ def list_requests(folder):
     return [os.path.join(folder, n) for n in names]
 
 
-def _one(path, destination, session, cfg):
+def _one(path, destination, session, cfg, private):
     name = os.path.splitext(os.path.basename(path))[0]
     item = {"request": os.path.basename(path)}
     start = time.time()
     try:
         request = contract.normalize(contract.read_request(path), "the request " + os.path.basename(path))
-        done = generate.run(request, os.path.join(destination, name + ".png"), session, cfg)
+        done = generate.run(request, os.path.join(destination, name + ".png"), session, cfg, private=private)
         item.update(ok=True, png=[os.path.basename(png) for png, _ in done])
     except contract.RequestError as e:
         item.update(ok=False, error="ERROR: %s" % e)
@@ -64,7 +66,8 @@ def main(argv=None):
         return contract.BAD_REQUEST
     os.makedirs(a.output, exist_ok=True)
     session = model.Session(cfg)
-    items = [_one(c, a.output, session, cfg) for c in requests]
+    private = generate.private_mode(a, cfg)
+    items = [_one(c, a.output, session, cfg, private) for c in requests]
     failures = sum(1 for i in items if not i["ok"])
     with open(summary, "x", encoding="utf-8") as f:
         json.dump({"format_version": contract.FORMAT_VERSION, "aigen": VERSION, "requests": items,

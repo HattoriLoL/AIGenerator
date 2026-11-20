@@ -13,7 +13,7 @@ Pure module (standard library only): the tests import it without torch.
 import os
 
 # what the Job carries from the start (generate.Job.__init__)
-BASE = frozenset(("request", "output", "session", "cfg", "t_start", "timings"))
+BASE = frozenset(("request", "output", "session", "cfg", "private", "t_start", "timings"))
 
 
 class SequenceError(Exception):

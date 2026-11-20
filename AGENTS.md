@@ -64,8 +64,11 @@ the text `scan-secrets: ok` on that line, amending the commit that brought it (e
 ## What must not break
 - **No output is overwritten.** An existing PNG or report is refused before anything is loaded; the files are created
   in exclusive mode.
-- **Every PNG carries its request** (the `aigen` chunk) and the AUTOMATIC1111 `parameters` text, and the request in
-  it, given back to the tool, makes the same image (within GPU nondeterminism, `docs/limitations.md`).
+- **Every PNG carries its request** (the `aigen` chunk) and the AUTOMATIC1111 `parameters` text, **unless the
+  prompts are not saved (private mode)**, and the request in it, given back to the tool, makes the same image (within
+  GPU nondeterminism, `docs/limitations.md`).
+- **Private mode saves no prompt.** With the prompts not saved, the PNG has no text chunk, the report and the web
+  failure log hold nothing that tells what the image is (`docs/contract.md`, "Private mode").
 - **The contract** ([docs/contract.md](docs/contract.md), checked by `aigen/contract.py` and `aigen/sheets.py`) is
   what other programs and the user's saved files rely on: the request (`request_version`), the character sheet
   (`sheet_version`), the outputs (`format_version`) and the exit codes. A field that changes meaning or is removed

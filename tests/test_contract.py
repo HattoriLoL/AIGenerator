@@ -127,6 +127,13 @@ class Codes(unittest.TestCase):
             generate.parse_args(["--steps", "many", "x.png"])
         self.assertEqual(c.exception.code, contract.BAD_REQUEST)
 
+    def test_private_and_save_prompts_together_exit_with_2(self):
+        from aigen import batch
+        for parse, argv in ((generate.parse_args, ["x.png", "--prompt", "1girl"]), (batch.parse_args, ["in", "out"])):
+            with self.assertRaises(SystemExit) as c:
+                parse(argv + ["--private", "--save-prompts"])
+            self.assertEqual(c.exception.code, contract.BAD_REQUEST)
+
     def test_the_contract_samplers_are_the_model_ones(self):
         self.assertEqual(set(contract.SAMPLERS), set(model.SCHEDULERS))
 

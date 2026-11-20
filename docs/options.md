@@ -57,6 +57,18 @@ Any `--hires-*` option also turns it on.
 
 Any `--face-fix-*` option also turns it on.
 
+## Privacy
+
+| Option | Meaning |
+|---|---|
+| `--private` | Do not save the prompts: the PNG gets no text chunk and the `.aigen.json` report leaves out the prompts, the sheet and the LoRAs ([contract.md](contract.md), "Private mode") |
+| `--save-prompts` | Save the prompts in the PNG and the report (the default) |
+
+They override `[privacy] save_prompts` of the config ([installation.md](installation.md)) for that run; giving both
+is an option error (code 2). They are not request fields: a request never carries them. The batch mode takes them
+too, for every request of the folder. Note that your shell may keep the command line, `--prompt` included, in its
+history; a `--request` file is yours to keep or delete.
+
 ## Examples
 
 ```
@@ -67,7 +79,7 @@ bin/aigen.sh output/c.png --request examples/request.json --seed 7 --count 4
 
 ## Batch mode
 
-`bin/aigen_batch.sh requests_folder output_folder` runs every `*.json` of the folder (sorted by name) with one model
+`bin/aigen_batch.sh requests_folder output_folder [--private | --save-prompts]` runs every `*.json` of the folder (sorted by name) with one model
 load. Each `x.json` becomes `output_folder/x.png` (or `x_001.png`, ...). A wrong or failed request does not stop the
 others; the summary goes to `output_folder/batch.aigen.json` ([contract.md](contract.md)). Relative sheet paths in the
 requests are relative to the current folder, not to the requests folder.

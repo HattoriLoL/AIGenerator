@@ -1,5 +1,6 @@
 """The writing: the PNG (with the "parameters" and "aigen" chunks) and the .aigen.json report next to it. No file
-that already exists is overwritten.
+that already exists is overwritten. In private mode (t.private) the PNG has no text chunk and the report leaves out
+what tells what the image is (docs/contract.md, "The outputs").
 """
 import json
 import os
@@ -8,6 +9,7 @@ import time
 from aigen import VERSION, contract, metadata, stages
 
 REPORT_SUFFIX = ".aigen.json"
+PRIVATE_REPORT_FIELDS = ("prompt", "sheet", "loras")  # the stage entries of the report left out in private mode
 
 
 def report_path(png):
@@ -33,11 +35,21 @@ def check_outputs(pngs):
                 raise contract.RequestError("the output already exists (nothing is overwritten): " + c)
 
 
+def build_report(request, entries, png_name, model, seconds, timings, private=False):
+    """The dictionary of the .aigen.json report: the request and the stages' entries (sheet, prompt, loras,
+    generation, ...). In private mode, the request is redacted (metadata.redact_request) and the prompt, sheet and
+    loras entries are left out. Does not change the given values."""
+    if private:
+        request = metadata.redact_request(request)
+        entries = {k: v for k, v in entries.items() if k not in PRIVATE_REPORT_FIELDS}
+    return {"format_version": contract.FORMAT_VERSION, "aigen": VERSION, "png": png_name, "request": request,
+            "model": model, "seconds": seconds, "timings": dict(timings), **entries, "private": bool(private)}
+
+
 def report(t, png_name):
-    """The dictionary of the .aigen.json report."""
-    return {"format_version": contract.FORMAT_VERSION, "aigen": VERSION, "png": png_name, "request": t.request,
-            "model": os.path.basename(t.cfg.checkpoint), "seconds": round(time.time() - t.t_start, 2),
-            "timings": dict(t.timings), **t.report}
+    """The .aigen.json report of a job."""
+    return build_report(t.request, t.report, png_name, os.path.basename(t.cfg.checkpoint),
+                        round(time.time() - t.t_start, 2), t.timings, t.private)
 
 
 def _write_new(path, write):
@@ -47,19 +59,25 @@ def _write_new(path, write):
         write(f)
 
 
-@stages.declare(reads=("image", "request", "positive", "negative", "active_loras", "output", "cfg", "report"),
+def write_png(image, path, chunks):
+    """Writes the image as a new PNG with exactly the given text chunks ({key: text}; none when empty)."""
+    from PIL.PngImagePlugin import PngInfo
+    info = PngInfo()
+    for key, text in chunks.items():
+        info.add_text(key, text)
+    _write_new(path, lambda f: image.save(f, format="PNG", pnginfo=info))
+
+
+@stages.declare(reads=("image", "request", "positive", "negative", "active_loras", "output", "cfg", "report",
+                       "private"),
                 writes=("files",))
 def stage(t):
-    """Writes the PNG with the metadata and the report."""
-    from PIL.PngImagePlugin import PngInfo
+    """Writes the PNG with the metadata (none in private mode) and the report."""
     model = os.path.splitext(os.path.basename(t.cfg.checkpoint))[0]
-    info = PngInfo()
-    info.add_text(metadata.A1111_KEY, metadata.parameters_text(t.request, t.positive, t.negative, model,
-                                                               t.active_loras))
-    info.add_text(metadata.AIGEN_KEY, metadata.aigen_chunk(t.request, t.positive, t.negative, t.active_loras))
+    chunks = metadata.png_chunks(t.request, t.positive, t.negative, model, t.active_loras, private=t.private)
     folder = os.path.dirname(os.path.abspath(t.output))
     os.makedirs(folder, exist_ok=True)
-    _write_new(t.output, lambda f: t.image.save(f, format="PNG", pnginfo=info))
+    write_png(t.image, t.output, chunks)
     text = json.dumps(report(t, os.path.basename(t.output)), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     json_path = report_path(t.output)
     _write_new(json_path, lambda f: f.write(text.encode("utf-8")))
