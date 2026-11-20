@@ -17,6 +17,8 @@ the scene tags, an optional character sheet, the size, the sampler, the seed, Lo
 - **Face fix** (off by default): find the anime faces, redraw each one at 1024 px and paste it back.
 - **Reproducible outputs:** every PNG carries its full request (and the AUTOMATIC1111 `parameters` text that other
   tools read), and a report with the seed and the time of each stage goes next to it. Nothing is ever overwritten.
+- **Private mode:** prompts can be kept out of the files (`--private`, a box in the web interface or a config key):
+  the PNG then carries no metadata and the report only the numbers.
 - **Scriptable:** documented exit codes, `ERROR:` messages, versioned formats, and a batch mode that loads the model
   once for a whole folder of requests.
 

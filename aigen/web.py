@@ -4,7 +4,9 @@
 
 Tabs: Generate (the request, the sheets, the LoRAs, the hires fix and the face fix), Sheets (create and edit), Gallery
 (the images of the output folder) and Read PNG (rebuilds the request from an AIGenerator image). One generation at a
-time. Each failure goes, with the full error and the request, to the log <output folder>/aigen-web.log.
+time. Each failure goes, with the full error and the request, to the log <output folder>/aigen-web.log; in private
+mode (the "private" box of the Generate tab, which starts as the config's [privacy] save_prompts says) neither the
+PNG, the report nor the log keeps the prompts.
 gradio and PIL are only imported inside the functions.
 """
 import datetime
@@ -26,16 +28,30 @@ GALLERY_MAX = 60
 LOG = "aigen-web.log"
 
 
-def log_failure(folder, request, error_text, now=None):
-    """Appends the time, the request and the full error (the traceback) to the output folder's log; returns its path."""
+def log_failure(folder, request, error_text, now=None, private=False):
+    """Appends the time, the request (not in private mode) and the full error (the traceback) to the output folder's
+    log; returns its path."""
     now = now or datetime.datetime.now()
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, LOG)
+    lines = ["=== " + now.isoformat(timespec="seconds")]
+    if not private:
+        lines.append("request: " + json.dumps(request, ensure_ascii=False, sort_keys=True))
+    lines.append(error_text.rstrip())
     with open(path, "a", encoding="utf-8") as f:
-        f.write("=== %s\nrequest: %s\n%s\n" % (now.isoformat(timespec="seconds"),
-                                             json.dumps(request, ensure_ascii=False, sort_keys=True),
-                                             error_text.rstrip()))
+        f.write("\n".join(lines) + "\n")
     return path
+
+
+def private_default(cfg):
+    """The initial value of the Generate tab's "private" box: ticked when the config does not save the prompts."""
+    return not cfg.save_prompts
+
+
+def split_values(values):
+    """The Generate button's values: the form ({field of FIELDS: value}) and, after them, the "private" box (an output
+    option of that generation, not a request field)."""
+    return dict(zip(FIELDS, values[:len(FIELDS)])), bool(values[len(FIELDS)])
 
 
 def request_from_form(v):
@@ -108,21 +124,22 @@ class App:
 
     def generate(self, *values):
         import gradio as gr
+        form, private = split_values(values)
         try:
-            request = request_from_form(dict(zip(FIELDS, values)))
+            request = request_from_form(form)
         except contract.RequestError as e:
             raise gr.Error(str(e))
         if not self.lock.acquire(blocking=False):
             raise gr.Error("a generation is already running; wait for it to finish")
         try:
             done = generate.run(request, new_path(self.cfg.output_folder, datetime.datetime.now()), self.session,
-                                self.cfg)
+                                self.cfg, private=private)
         except contract.RequestError as e:
             raise gr.Error(str(e))
         except Exception as e:  # the model did not load, the GPU ran out of memory, ...
             text = traceback.format_exc()
             print(text, file=sys.stderr)
-            log = log_failure(self.cfg.output_folder, request, text)
+            log = log_failure(self.cfg.output_folder, request, text, private=private)
             model.empty_cache()  # after running out of memory, the next generation starts with a clean GPU
             raise gr.Error("the generation failed: %s: %s (details in %s)" % (type(e).__name__, e, log))
         finally:
@@ -192,6 +209,9 @@ def _generate_tab(gr, app, c):
                                     info="In the folder: " + (", ".join(loras.list_loras(app.cfg.loras_folder))
                                                               or "none"))
             _extras(gr, c)
+            c["private"] = gr.Checkbox(private_default(app.cfg), label="Don't save the prompt (private)",
+                                       info="The PNG gets no metadata, and the report and the error log leave out the"
+                                            " prompts, the sheet and the LoRAs")
             button = gr.Button("Generate", variant="primary")
         with gr.Column(scale=2):
             result = gr.Gallery(label="Result", columns=2, height="auto")
@@ -246,9 +266,9 @@ def build(app):
             gallery = gr.Gallery(label="Output folder", columns=4, height="auto")
         with gr.Tab("Read PNG"):
             upload = gr.File(label="A PNG made by AIGenerator", file_types=[".png"], type="filepath")
-            gr.Markdown("The request kept in the PNG goes to the Generate tab.")
+            gr.Markdown("The request kept in the PNG goes to the Generate tab. A PNG made in private mode has none.")
         inputs = [c[k] for k in FIELDS]
-        button.click(app.generate, inputs, [result, notice], concurrency_limit=1)
+        button.click(app.generate, inputs + [c["private"]], [result, notice], concurrency_limit=1)
         save.click(app.save_sheet, sheet_inputs, [sheet_notice, c["sheet"], choice])
         refresh.click(lambda: recent(app.cfg.output_folder), None, gallery)
         upload.upload(app.read_png, upload, inputs)

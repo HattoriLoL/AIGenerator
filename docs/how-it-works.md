@@ -44,14 +44,18 @@ the GPU.
    to the image. The crop is resized to 1024 px, inpainted with strength `strength` (mask: the face box with a soft
    edge), resized back and pasted with the same mask. `prompt` adds tags for the face only. Each face uses seed + n.
 8. **Output** (`output.stage`). The PNG and the `.aigen.json` report are created in exclusive mode: an existing file
-   is never overwritten, even by two runs at the same time. See [contract.md](contract.md) for both formats.
+   is never overwritten, even by two runs at the same time. See [contract.md](contract.md) for both formats. In
+   private mode (the job's `private`: `--private`, the web interface's "private" box, or `[privacy] save_prompts =
+   false` in the config) the PNG is written with no text chunk (`metadata.png_chunks`) and the report leaves out the
+   prompts, the sheet and the LoRAs (`metadata.redact_request`, `output.build_report`).
 
 With `count` > 1, the sequence runs once per image, with consecutive seeds, on the same session.
 
 ## The stages in the code
 
 The table below is the one the stages declare (with hires fix and face fix on), checked by `tests/test_contract.py`.
-The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `t_start`, `timings`) come with the job.
+The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `private`, `t_start`, `timings`) come with the
+job.
 
 | Stage | Reads | Writes |
 |---|---|---|
@@ -62,7 +66,7 @@ The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `t_start`, `t
 | `generation.stage` | `active_loras`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `image` |
 | `hires.stage` | `active_loras`, `image`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `image` |
 | `face.stage` | `active_loras`, `image`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `faces`, `image` |
-| `output.stage` | `active_loras`, `cfg`, `image`, `negative`, `output`, `positive`, `report`, `request` | `files` |
+| `output.stage` | `active_loras`, `cfg`, `image`, `negative`, `output`, `positive`, `private`, `report`, `request` | `files` |
 
 ## Modules
 
@@ -78,7 +82,7 @@ The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `t_start`, `t
 | `prompts.py` | Prompt assembly and the weight syntax | no (pure) |
 | `sheets.py` | Character sheets (TOML) | no (pure) |
 | `loras.py` | LoRA files and the `name:weight` list | only the stage |
-| `metadata.py` | The PNG text chunks | no (pure) |
+| `metadata.py` | The PNG text chunks, and what private mode leaves out | no (pure) |
 | `model.py` | The session: pipeline, compel, upscaler, face detector, samplers | yes, inside its functions |
 | `generation.py`, `hires.py`, `face.py`, `output.py` | The GPU stages and the output | yes, inside the stages |
 

@@ -2,8 +2,9 @@
 
     bin/aigen.sh output.png [--request request.json] [--prompt "..."] [--sheet name] [options]
 
-The command-line options override the fields of --request. All of them are in docs/options.md; the request, in
-docs/contract.md. Exit code: 0 ok, 1 the image was not made, 2 the request is wrong and nothing was done.
+The command-line options override the fields of --request; --private and --save-prompts override the config's
+[privacy] save_prompts for the run. All of them are in docs/options.md; the request, in docs/contract.md. Exit code:
+0 ok, 1 the image was not made, 2 the request is wrong and nothing was done.
 """
 import argparse
 import os
@@ -61,6 +62,25 @@ def _extra_options(p):
     f.add_argument("--face-fix-max", type=int, help="how many faces at most")
 
 
+def privacy_options(p):
+    """--private and --save-prompts (giving both is an option error: exit 2); without them, the config decides."""
+    g = p.add_argument_group("privacy (default: [privacy] save_prompts in the config, true)")
+    m = g.add_mutually_exclusive_group()
+    m.add_argument("--private", action="store_true",
+                   help="do not save the prompts: the PNG gets no text chunk and the report leaves out the prompts,"
+                        " the sheet and the LoRAs")
+    m.add_argument("--save-prompts", action="store_true", help="save the prompts in the PNG and the report")
+
+
+def private_mode(a, cfg):
+    """Whether the run is private: --private or --save-prompts if given, else the config (not save_prompts)."""
+    if a.private:
+        return True
+    if a.save_prompts:
+        return False
+    return not cfg.save_prompts
+
+
 def parse_args(argv, prog=None):
     p = _Options(prog=prog or contract.command("aigen"),
                  description="Generates anime character images with Pony Diffusion XL.")
@@ -68,6 +88,7 @@ def parse_args(argv, prog=None):
     p.add_argument("--version", action="version", version="AIGenerator " + VERSION)
     _generation_options(p)
     _extra_options(p)
+    privacy_options(p)
     return p.parse_args(argv)
 
 
@@ -111,8 +132,9 @@ def request_from_args(a):
 class Job:
     """What the stages read and write in a generation (one image). At the start, only stages.BASE."""
 
-    def __init__(self, request, output_png, session, cfg):
+    def __init__(self, request, output_png, session, cfg, private=False):
         self.request, self.output, self.session, self.cfg = request, output_png, session, cfg
+        self.private = bool(private)  # the prompts are not saved (output.stage)
         self.t_start, self.timings = time.time(), {}
 
 
@@ -150,9 +172,11 @@ def sequence(request):
     return tuple(s)
 
 
-def run(request, output_png, session, cfg, notify=None):
+def run(request, output_png, session, cfg, notify=None, private=None):
     """Generates the images of a normalized request and returns [(png, report)]. The outputs are all checked before
-    the first one; with seed -1, one is drawn and the following ones add 1."""
+    the first one; with seed -1, one is drawn and the following ones add 1. `private` (the prompts not saved) is,
+    when None, the config's: not cfg.save_prompts."""
+    private = not cfg.save_prompts if private is None else bool(private)
     pngs = output.paths(output_png, request["count"])
     output.check_outputs(pngs)
     first_seed = request["seed"] if request["seed"] >= 0 else random.randrange(contract.SEED_MAX + 1)
@@ -161,7 +185,7 @@ def run(request, output_png, session, cfg, notify=None):
         one = dict(request, seed=(first_seed + i) % (contract.SEED_MAX + 1), count=1)
         seq = sequence(one)
         stages.check(seq)
-        t = Job(one, png, session, cfg)
+        t = Job(one, png, session, cfg, private)
         for f in seq:
             start = time.time()
             f(t)
@@ -177,7 +201,7 @@ def main(argv=None):
     try:
         cfg = config.read()
         request = request_from_args(a)
-        run(request, os.path.abspath(a.output), model.Session(cfg), cfg, notify=print)
+        run(request, os.path.abspath(a.output), model.Session(cfg), cfg, notify=print, private=private_mode(a, cfg))
     except contract.RequestError as e:
         print("ERROR: %s" % e, file=sys.stderr)
         return contract.BAD_REQUEST
