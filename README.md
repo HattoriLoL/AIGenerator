@@ -21,17 +21,22 @@ the scene tags, an optional character sheet, the size, the sampler, the seed, Lo
   once for a whole folder of requests.
 
 ## Requirements and installation
-1. Linux with an NVIDIA GPU (16 GB is comfortable; RTX 50 cards are supported through PyTorch for CUDA 12.8) and
-   [uv](https://docs.astral.sh/uv/).
-2. `bin/install.sh` creates the environment in `.venv/` (Python 3.12 and the dependencies of `pyproject.toml`).
-3. Download an SDXL checkpoint (Pony Diffusion V6 XL) and set its path in a `config.local.ini` (ignored by git):
-   ```ini
-   [models]
-   checkpoint = /path/to/ponyDiffusionV6XL.safetensors
-   ```
-4. Optional: `bin/download_extras.sh` downloads the upscaler (hires fix) and the face detector (face fix).
+An **NVIDIA GPU** (16 GB is comfortable; RTX 50 cards are supported through PyTorch for CUDA 12.8), Linux or Windows
+10/11 (Windows is [not tested yet](docs/windows.md)) and about 20 GB of free disk space. Then one command:
 
-Details, all the settings and the environment variables: [docs/installation.md](docs/installation.md).
+| System | Run |
+|---|---|
+| Linux | `./setup.sh` |
+| Windows | double-click `setup.bat` |
+
+Setup checks for the GPU, installs [uv](https://docs.astral.sh/uv/) if it is missing, creates the environment in
+`.venv/` (Python 3.12 and PyTorch), downloads Pony Diffusion V6 XL, the upscaler (hires fix) and the face detector
+(face fix) with their SHA256 checked, writes `config.local.ini` and adds an "AIGenerator" shortcut (application menu
+on Linux; Desktop and Start Menu on Windows). It is safe to run again: what is done is skipped and your files are
+never overwritten. Then **open AIGenerator from the shortcut**: the web interface opens in the browser.
+
+The steps, the options (`--no-models`, `--no-shortcut`, `--verify`, `--no-gpu-check`, ...), the manual way and all
+the settings: [docs/installation.md](docs/installation.md).
 
 ## Running
 ```
@@ -41,8 +46,9 @@ bin/aigen.sh output.png --request request.json
 bin/aigen_batch.sh requests_folder output_folder
 bin/aigen_web.sh                                   (http://127.0.0.1:7860)
 ```
-`bin/install_shortcut.sh` adds an "AIGenerator" shortcut to the application menu that opens the web interface
-([docs/web.md](docs/web.md)).
+On Windows the same launchers are `aigen.bat`, `aigen_batch.bat` and `aigen_web.bat`
+([docs/windows.md](docs/windows.md)). The shortcut runs the web interface in a terminal window; closing it frees the
+GPU ([docs/web.md](docs/web.md)).
 Next to `output.png` you get `output.aigen.json` (the report). The exit code is 0 on success, 1 when the image could
 not be made and 2 when the request is wrong and nothing was done (the message starts with `ERROR:`; see
 [docs/contract.md](docs/contract.md)).
@@ -52,7 +58,8 @@ All the options are explained in [docs/options.md](docs/options.md).
 ## Documentation
 | File | Topic |
 |---|---|
-| [docs/installation.md](docs/installation.md) | Installation, the models and the configuration |
+| [docs/installation.md](docs/installation.md) | Setup, the models and the configuration |
+| [docs/windows.md](docs/windows.md) | Windows: setup, the launchers, the shortcut and a first-run checklist |
 | [docs/options.md](docs/options.md) | All options, batch mode and examples |
 | [docs/contract.md](docs/contract.md) | The contract: the request, the outputs, the versions and the exit codes |
 | [docs/sheets.md](docs/sheets.md) | Character sheets |
@@ -66,11 +73,11 @@ All the options are explained in [docs/options.md](docs/options.md).
 | Folder | Contents |
 |---|---|
 | `aigen/` | The code |
-| `bin/` | The launchers, the installer and the secret scanner |
+| `bin/` | The Linux launchers, the Python lookups and the secret scanner (`setup.sh`, `setup.bat` and the Windows launchers are in the root) |
 | `tests/` | Automated tests (no GPU, no image generation) |
 | `examples/` | An example request and character sheet |
 | `docs/` | The documentation, one file per topic |
-| `models/`, `characters/`, `output/` | Models, your character sheets and the outputs (created by the installer, ignored by git) |
+| `models/`, `characters/`, `output/` | Models, your character sheets and the outputs (created by setup, ignored by git) |
 
 ## Tests
 `tests/run.sh` runs the whole suite in a few seconds with any Python 3.11+, without PyTorch or a GPU: the contract,
@@ -78,7 +85,7 @@ the prompt assembly, the sheets, the metadata, the stage sequences and the code 
 checking images is done by a person.
 
 ## Status
-Early: version 0.1, used on Linux with an NVIDIA RTX 50-series GPU (16 GB). The formats are versioned
+Early: version 0.1, used on Linux with an NVIDIA RTX 50-series GPU (16 GB); not tested on Windows yet. The formats are versioned
 ([docs/contract.md](docs/contract.md)) but may still change before 1.0.
 
 ## Content
@@ -87,7 +94,7 @@ prompt, the explicit ratings in the negative; see [docs/contract.md](docs/contra
 is perfect. You are responsible for what you generate and for following the model's license.
 
 ## Limitations
-SDXL checkpoints only, Linux only, one generation at a time; the full list is in
+SDXL checkpoints only, NVIDIA GPUs only, one generation at a time; the full list is in
 [docs/limitations.md](docs/limitations.md).
 
 ## Support

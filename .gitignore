@@ -1,4 +1,4 @@
-# The environment (bin/install.sh)
+# The environment (setup.sh / setup.bat)
 .venv/
 __pycache__/
 *.pyc

@@ -43,9 +43,15 @@ class RequestError(Exception):
     """The request cannot start: it ends with BAD_REQUEST, before the model is loaded and before anything is written."""
 
 
-def command(name):
-    """How the user calls the program, for the usage and error messages."""
-    return "bin/%s.sh" % name
+ROOT_SCRIPTS = ("setup",)          # in the repository root on Linux too; the other .sh launchers are in bin/
+
+
+def command(name, windows=None):
+    """How the user calls the program on this system, for the usage and error messages: name.bat on Windows (all the
+    .bat launchers are in the root), bin/name.sh (or ./setup.sh) elsewhere."""
+    if os.name == "nt" if windows is None else windows:
+        return name + ".bat"
+    return ("./%s.sh" if name in ROOT_SCRIPTS else "bin/%s.sh") % name
 
 
 def _number(v):

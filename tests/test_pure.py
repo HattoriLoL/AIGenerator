@@ -1,5 +1,5 @@
-"""Tests of the pure modules: the prompt, the sheets, the LoRAs, the metadata, the configuration, the stage sequences
-and the math of the face fix and of the web interface. They need neither torch nor a GPU and generate no image.
+"""Tests of the pure modules: the prompt, the sheets, the LoRAs, the metadata, the configuration, the stage sequences,
+the math of the face fix and of the web interface, and the setup (aigen/install.py: no network, local files only). They need neither torch nor a GPU and generate no image.
 
     python3 tests/test_pure.py
 """
@@ -14,8 +14,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from aigen import (config, contract, face, generate, hires, loras, metadata, model, output, prompts,  # noqa: E402
-                   sheets, stages, web)
+from aigen import (config, contract, face, generate, hires, install, loras, metadata, model, output,  # noqa: E402
+                   prompts, sheets, stages, web)
 
 EXAMPLE_SHEET = os.path.join(ROOT, "examples", "characters", "example.toml")
 
@@ -364,6 +364,216 @@ class Form(unittest.TestCase):
             os.makedirs(os.path.dirname(first))
             open(first, "w").close()
             self.assertEqual(web.new_path(folder, now), os.path.join(folder, "2026-01-02", "030405_2.png"))
+
+
+def _entry(data, **fields):
+    """A model entry for a local file:// download."""
+    import hashlib
+    return dict({"name": "test model", "key": "upscaler", "url": "", "file": "models/upscalers/x.bin",
+                 "size": len(data), "sha256": hashlib.sha256(data).hexdigest(), "page": "https://example.com/x",
+                 "note": ""}, **fields)
+
+
+class _Quiet:
+    def write(self, text):
+        pass
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+
+class Install(unittest.TestCase):
+    """The setup's second half (aigen/install.py), on temporary folders and file:// URLs: no network, no GPU."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        install.ensure_folders(self.root)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def source(self, data):
+        import pathlib
+        path = os.path.join(self.root, "source.bin")
+        with open(path, "wb") as f:
+            f.write(data)
+        return pathlib.Path(path).as_uri()
+
+    def report(self):
+        import io
+        return install.Report(io.StringIO())
+
+    def test_the_manifest(self):
+        files = {e["key"]: e["file"] for e in install.MODELS}
+        self.assertEqual(files, {"checkpoint": "models/checkpoints/ponyDiffusionV6XL.safetensors",
+                                 "upscaler": config.KEYS["upscaler"][3],
+                                 "face_detector": config.KEYS["face_detector"][3]})
+        sizes = [e["size"] for e in install.MODELS]
+        self.assertEqual(sizes, [6938041050, 17938799, 246945])
+        self.assertEqual(install.MODELS[0]["url"], "https://civitai.com/api/download/models/290640?fileId=228616")
+        self.assertEqual(install.MODELS[0]["sha256"],
+                         "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3")
+        self.assertIn("Fair AI Public License 1.0-SD", install.MODELS[0]["note"])
+        for e in install.MODELS:
+            self.assertRegex(e["sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(e["url"].startswith("https://") and e["page"].startswith("https://"), e["name"])
+            self.assertIn(os.path.dirname(e["file"]), install.FOLDERS)
+        for folder in install.FOLDERS:
+            self.assertTrue(os.path.isdir(os.path.join(self.root, folder)), folder)
+
+    def test_what_to_do_with_each_model(self):
+        e = _entry(b"abc")
+        path = os.path.join(self.root, e["file"])
+        cfg = config.read(self.root, {})
+        self.assertEqual(install.plan(e, self.root, cfg), "download")
+        with open(path, "wb") as f:
+            f.write(b"abc")
+        self.assertEqual(install.plan(e, self.root, cfg), "keep")
+        self.assertEqual(install.plan(e, self.root, cfg, verify=True), "check")
+        with open(path, "wb") as f:
+            f.write(b"abcd")
+        self.assertEqual(install.plan(e, self.root, cfg), "wrong_size")
+        other = os.path.join(self.root, "other.bin")
+        open(other, "w").close()
+        self.assertEqual(install.plan(e, self.root, config.read(self.root, {"AIGEN_UPSCALER": other})), "elsewhere")
+        missing = os.path.join(self.root, "missing.bin")
+        self.assertEqual(install.plan(e, self.root, config.read(self.root, {"AIGEN_UPSCALER": missing})),
+                         "wrong_size")
+
+    def test_a_wrong_file_in_place_is_never_touched(self):
+        e = _entry(b"abc")
+        path = os.path.join(self.root, e["file"])
+        with open(path, "wb") as f:
+            f.write(b"xyz")  # the right size, the wrong content
+        r = self.report()
+        install.MODELS, saved = (e,), install.MODELS
+        try:
+            install.get_models(self.root, config.read(self.root, {}), True, r, {})
+        finally:
+            install.MODELS = saved
+        self.assertTrue(r.failed)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"xyz")
+
+    def test_download_checks_the_hash_and_leaves_no_partial(self):
+        data = b"model weights " * 1000
+        e = _entry(data, url=self.source(data))
+        path = os.path.join(self.root, e["file"])
+        install.download(e, path, out=_Quiet())
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), data)
+        self.assertFalse(os.path.exists(path + ".partial"))
+        os.remove(path)
+        wrong = dict(e, sha256="0" * 64)
+        with self.assertRaises(install.DownloadError):
+            install.download(wrong, path, out=_Quiet())
+        self.assertFalse(os.path.exists(path))
+        self.assertFalse(os.path.exists(path + ".partial"))
+        with self.assertRaises(install.DownloadError):
+            install.download(dict(e, size=len(data) + 1), path, out=_Quiet())
+        self.assertFalse(os.path.exists(path))
+
+    def test_a_partial_download_is_finished(self):
+        data = b"0123456789" * 100
+        e = _entry(data, url=self.source(data))
+        path = os.path.join(self.root, e["file"])
+        with open(path + ".partial", "wb") as f:
+            f.write(data[:300])  # file:// does not resume: it starts over
+        install.download(e, path, out=_Quiet())
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), data)
+        os.remove(path)
+        with open(path + ".partial", "wb") as f:
+            f.write(data)  # complete, but not renamed: no request at all
+        install.download(dict(e, url="https://invalid.invalid/x"), path, out=_Quiet())
+        self.assertTrue(os.path.isfile(path))
+        self.assertFalse(os.path.exists(path + ".partial"))
+        self.assertEqual(install.missing_bytes(e, self.root), len(data))
+
+    def test_a_failed_download_says_how_to_do_it_by_hand(self):
+        e = _entry(b"abc", url=self.source(b"abc")[:-len("source.bin")] + "missing.bin")
+        r = self.report()
+        install._download_one(e, self.root, None, r)
+        self.assertTrue(r.failed)
+        self.assertIn("by hand from https://example.com/x", r.lines[-1])
+        civitai = install.manual_hint(install.MODELS[0], self.root)
+        self.assertIn(install.CIVITAI_VARIABLE, civitai)
+        self.assertNotIn(install.CIVITAI_VARIABLE, install.manual_hint(install.MODELS[0], self.root, "t0k"))
+
+    def test_the_token_goes_only_to_civitai_and_not_to_its_redirect(self):
+        r = install.make_request(install.MODELS[0]["url"], "t0k")
+        self.assertEqual(r.unredirected_hdrs.get("Authorization"), "Bearer t0k")
+        self.assertNotIn("Authorization", r.headers)
+        for e in install.MODELS[1:]:
+            self.assertFalse(install.make_request(e["url"], "t0k").has_header("Authorization"))
+        self.assertFalse(install.make_request(install.MODELS[0]["url"]).has_header("Authorization"))
+        self.assertFalse(install.is_civitai("https://civitai.com.example.org/x"))
+        self.assertEqual(install.make_request("https://x.org/a", offset=10).get_header("Range"), "bytes=10-")
+
+    def test_disk_space(self):
+        gb = 1024 ** 3
+        self.assertTrue(install.enough_space(10 * gb, 8 * gb))
+        self.assertFalse(install.enough_space(int(7.4 * gb), int(6.5 * gb)))
+        self.assertTrue(install.enough_space(gb, 0))
+
+    def test_config_local_is_written_once_and_never_overwritten(self):
+        self.assertEqual(install.ensure_config(self.root, self.report(), {}), "written")
+        self.assertEqual(config.read(self.root, {}).checkpoint,
+                         os.path.normpath(os.path.join(self.root, install.MODELS[0]["file"])))
+        path = os.path.join(self.root, "config.local.ini")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("[models]\ncheckpoint = mine.safetensors\n")
+        r = self.report()
+        self.assertEqual(install.ensure_config(self.root, r, {}), "kept")
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "[models]\ncheckpoint = mine.safetensors\n")
+        self.assertTrue(any(line.startswith("WARNING: the configured checkpoint is missing") for line in r.lines))
+        open(os.path.join(self.root, "mine.safetensors"), "w").close()
+        r = self.report()
+        install.ensure_config(self.root, r, {})
+        self.assertFalse(any("WARNING" in line for line in r.lines))
+
+    def test_the_desktop_entry(self):
+        root = os.path.join(self.root, "my $folder")
+        text = install.desktop_entry(root)
+        self.assertEqual(install._desktop_quote('/a $b"c%d'), '"/a \\$b\\"c%%d"')
+        self.assertIn("Exec=%s\n" % install._desktop_quote(os.path.join(root, "bin", "open_web.sh")), text)
+        for line in ("[Desktop Entry]", "Type=Application", "Name=AIGenerator", "Terminal=true", "Path=" + root,
+                     "Icon=applications-graphics"):
+            self.assertIn(line + "\n", text)
+        self.assertIn("Icon=/x/icon.svg\n", install.desktop_entry(root, "/x/icon.svg"))
+        self.assertEqual(install.desktop_path({"XDG_DATA_HOME": "/data"}),
+                         os.path.join("/data", "applications", "aigenerator.desktop"))
+        path = os.path.join(self.root, "aigenerator.desktop")
+        self.assertIsNone(install.current_icon(path))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(install.desktop_entry(root, "/x/mine.svg"))
+        self.assertEqual(install.current_icon(path), "/x/mine.svg")
+
+    def test_the_windows_shortcut(self):
+        import base64
+        env = install.windows_shortcut_env("C:\\AIGenerator", None, environ={})
+        self.assertEqual(env["AIGEN_SHORTCUT_TARGET"], os.path.join("C:\\AIGenerator", "open_web.bat"))
+        self.assertEqual(env["AIGEN_SHORTCUT_MODE"], "create")
+        self.assertEqual(install.windows_shortcut_env("C:\\A", None, True, {})["AIGEN_SHORTCUT_MODE"], "remove")
+        command = install.powershell_command(install.WINDOWS_SCRIPT)
+        self.assertEqual(command[:2], ["powershell", "-NoProfile"])
+        self.assertEqual(base64.b64decode(command[-1]).decode("utf-16-le"), install.WINDOWS_SCRIPT)
+        for fragment in ("WScript.Shell", "GetFolderPath('Desktop')", "GetFolderPath('Programs')", "AIGenerator.lnk",
+                         "$env:ComSpec", "$env:AIGEN_SHORTCUT_TARGET"):
+            self.assertIn(fragment, install.WINDOWS_SCRIPT)
+
+    def test_the_options(self):
+        a = install.parse_args([])
+        self.assertEqual((a.no_models, a.no_shortcut, a.verify, a.no_gpu_check, a.icon, a.remove_shortcut),
+                         (False, False, False, False, None, False))
+        a = install.parse_args(["--no-models", "--no-shortcut", "--verify", "--no-gpu-check", "--icon", "i.svg"])
+        self.assertEqual((a.no_models, a.no_shortcut, a.verify, a.no_gpu_check, a.icon), (True, True, True, True,
+                                                                                        "i.svg"))
 
 
 class Examples(unittest.TestCase):

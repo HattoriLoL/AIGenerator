@@ -6,8 +6,9 @@ Rules for a Claude Code agent in this repository, on top of `AGENTS.md`.
 
 ## No image work: images are the owner's job
 - **Never generate an image.** Do not run `bin/aigen.sh`, `bin/aigen_batch.sh`, `bin/aigen_web.sh` or
-  `bin/open_web.sh` (nor the desktop shortcut), nor `aigen.generate`, `aigen.batch` or `aigen.web` in any other way,
-  nor any script that loads a checkpoint, to "try" or "check" a change. There are no image tests: not as automated
+  `bin/open_web.sh`, nor their Windows twins (`aigen.bat`, `aigen_batch.bat`, `aigen_web.bat`, `open_web.bat`), nor
+  the desktop shortcut, nor `aigen.generate`, `aigen.batch` or `aigen.web` in any other way, nor any script that loads
+  a checkpoint, to "try" or "check" a change. There are no image tests: not as automated
   tests, not as manual checks.
 - **Never look at an image.** Do not open, read, view or describe PNG, JPG, WEBP or GIF files (the outputs, the
   examples or any other), and do not inspect their pixels with a script.
@@ -27,5 +28,7 @@ Rules for a Claude Code agent in this repository, on top of `AGENTS.md`.
 
 ## What to run
 - The tests: `tests/run.sh`, `python3 tests/test_contract.py` and `python3 tests/test_pure.py` (seconds, no GPU).
-- Do not install the environment (`bin/install.sh`, `uv sync`), download models (`bin/download_extras.sh`) or
-  start anything on the GPU unless the owner asks for it in this conversation.
+- Do not run setup (`setup.sh`, `setup.bat`, `python -m aigen.install`), install the environment (`uv sync`),
+  download models or start anything on the GPU unless the owner asks for it in this conversation. Setup touches the
+  owner's environment, models, `config.local.ini` and shortcut; test `aigen/install.py` only on temporary folders
+  and `file://` URLs (as `tests/test_pure.py` does).

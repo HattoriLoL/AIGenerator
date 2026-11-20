@@ -71,6 +71,7 @@ The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `t_start`, `t
 | `generate.py` | The program: options, the job, the sequence, `run` | no (the stages import them) |
 | `batch.py` | Batch mode | no |
 | `web.py` | The web interface (Gradio) | Gradio, inside its functions |
+| `install.py` | The second half of setup: folders, model downloads (size and SHA256), `config.local.ini`, shortcut | no (standard library only) |
 | `contract.py` | Format versions, exit codes, the request check | no (pure) |
 | `stages.py` | Stage declarations and the sequence check | no (pure) |
 | `config.py` | `config.ini`, `config.local.ini` and the `AIGEN_*` variables | no (pure) |
