@@ -1,0 +1,14 @@
+{
+  "request_version": 1,
+  "sheet": "examples/characters/example.toml",
+  "prompt": "standing, smile, looking at viewer, cherry blossoms, outdoors, day",
+  "negative": "lowres, bad anatomy, bad hands",
+  "width": 832,
+  "height": 1216,
+  "steps": 25,
+  "cfg": 7,
+  "sampler": "euler_a",
+  "seed": 1234,
+  "hires": {"scale": 1.5, "strength": 0.4},
+  "face_fix": {"strength": 0.4}
+}

@@ -1,73 +1,75 @@
-"""A configuração: onde estão o modelo, os LoRAs, o upscaler e o detector de rosto, e as pastas de fichas e de saída.
+"""The configuration: where the model, the LoRAs, the upscaler and the face detector are, and the sheets and output
+folders.
 
-A ordem, do que vale mais para o que vale menos: a variável de ambiente (AIGEN_CHECKPOINT, ...), o config.local.ini
-(fora do git: os caminhos de uma máquina) e o config.ini (versionado, só o modelo). Um caminho relativo é relativo à
-raiz do repositório; "~" vale a pasta do usuário.
+The order, from what weighs most to what weighs least: the environment variable (AIGEN_CHECKPOINT, ...),
+config.local.ini (outside git: a machine's paths) and config.ini (versioned, only the template). A relative path is
+relative to the repository root; "~" is the user's home folder.
 
-Módulo puro (só a biblioteca padrão).
+Pure module (standard library only).
 """
 import configparser
 import os
 
-from aigen import contrato
+from aigen import contract
 
-RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# atributo: (seção, chave, variável de ambiente, padrão, é caminho)
-CHAVES = {
-    "checkpoint": ("modelos", "checkpoint", "AIGEN_CHECKPOINT", "", True),
-    "vae": ("modelos", "vae", "AIGEN_VAE", "", True),
-    "pasta_loras": ("modelos", "pasta_loras", "AIGEN_LORAS", "models/loras", True),
-    "upscaler": ("modelos", "upscaler", "AIGEN_UPSCALER", "models/upscalers/RealESRGAN_x4plus_anime_6B.pth", True),
-    "detector_rosto": ("modelos", "detector_rosto", "AIGEN_DETECTOR_ROSTO",
-                       "models/detectors/lbpcascade_animeface.xml", True),
-    "pasta_fichas": ("pastas", "fichas", "AIGEN_FICHAS", "personagens", True),
-    "pasta_saida": ("pastas", "saida", "AIGEN_SAIDA", "saida", True),
-    "porta": ("web", "porta", "AIGEN_PORTA", "7860", False),
+# attribute: (section, key, environment variable, default, is a path)
+KEYS = {
+    "checkpoint": ("models", "checkpoint", "AIGEN_CHECKPOINT", "", True),
+    "vae": ("models", "vae", "AIGEN_VAE", "", True),
+    "loras_folder": ("models", "loras_folder", "AIGEN_LORAS", "models/loras", True),
+    "upscaler": ("models", "upscaler", "AIGEN_UPSCALER", "models/upscalers/RealESRGAN_x4plus_anime_6B.pth", True),
+    "face_detector": ("models", "face_detector", "AIGEN_FACE_DETECTOR",
+                      "models/detectors/lbpcascade_animeface.xml", True),
+    "sheets_folder": ("folders", "sheets", "AIGEN_SHEETS", "characters", True),
+    "output_folder": ("folders", "output", "AIGEN_OUTPUT", "output", True),
+    "port": ("web", "port", "AIGEN_PORT", "7860", False),
 }
 
 
 class Config:
-    """Os valores já resolvidos (caminhos absolutos, ou "" quando não configurados)."""
+    """The resolved values (absolute paths, or "" when not configured)."""
 
-    def __init__(self, valores):
-        for nome, valor in valores.items():
-            setattr(self, nome, valor)
+    def __init__(self, values):
+        for name, value in values.items():
+            setattr(self, name, value)
 
     def __repr__(self):
-        return "Config(%s)" % ", ".join("%s=%r" % (n, getattr(self, n)) for n in CHAVES)
+        return "Config(%s)" % ", ".join("%s=%r" % (n, getattr(self, n)) for n in KEYS)
 
 
-def _caminho(valor, raiz):
-    valor = os.path.expanduser(valor.strip())
-    if not valor:
+def _path(value, root):
+    value = os.path.expanduser(value.strip())
+    if not value:
         return ""
-    return os.path.normpath(valor if os.path.isabs(valor) else os.path.join(raiz, valor))
+    return os.path.normpath(value if os.path.isabs(value) else os.path.join(root, value))
 
 
-def _porta(texto):
+def _port(text):
     try:
-        porta = int(texto)
+        port = int(text)
     except ValueError:
-        porta = -1
-    if not 1 <= porta <= 65535:
-        raise contrato.ErroPedido("a porta da interface web é %r; o esperado é um inteiro entre 1 e 65535" % texto)
-    return porta
+        port = -1
+    if not 1 <= port <= 65535:
+        raise contract.RequestError("the web interface port is %r; expected an integer from 1 to 65535" % text)
+    return port
 
 
-def ler(raiz=RAIZ, ambiente=None):
-    """Lê config.ini e config.local.ini de `raiz` e as variáveis AIGEN_* de `ambiente` (padrão: os.environ)."""
-    ambiente = os.environ if ambiente is None else ambiente
+def read(root=ROOT, environ=None):
+    """Reads config.ini and config.local.ini from `root` and the AIGEN_* variables from `environ` (default:
+    os.environ)."""
+    environ = os.environ if environ is None else environ
     ini = configparser.ConfigParser(interpolation=None)
     try:
-        ini.read([os.path.join(raiz, "config.ini"), os.path.join(raiz, "config.local.ini")], encoding="utf-8")
+        ini.read([os.path.join(root, "config.ini"), os.path.join(root, "config.local.ini")], encoding="utf-8")
     except configparser.Error as e:
-        raise contrato.ErroPedido("o config.ini (ou o config.local.ini) não pôde ser lido: %s" % e)
-    valores = {}
-    for nome, (secao, chave, variavel, padrao, e_caminho) in CHAVES.items():
-        valor = ambiente.get(variavel)
-        if valor is None:
-            valor = ini.get(secao, chave, fallback=padrao)
-        valores[nome] = _caminho(valor, raiz) if e_caminho else valor.strip()
-    valores["porta"] = _porta(valores["porta"])
-    return Config(valores)
+        raise contract.RequestError("config.ini (or config.local.ini) could not be read: %s" % e)
+    values = {}
+    for name, (section, key, variable, default, is_path) in KEYS.items():
+        value = environ.get(variable)
+        if value is None:
+            value = ini.get(section, key, fallback=default)
+        values[name] = _path(value, root) if is_path else value.strip()
+    values["port"] = _port(values["port"])
+    return Config(values)

@@ -3,7 +3,7 @@
 [Back to the README](../README.md)
 
 AIGenerator itself is licensed under the GPL-3.0 ([LICENSE](../LICENSE)). Every dependency in `pyproject.toml` has a row
-here (checked by `tests/test_contrato.py`), and only licenses that allow commercial use are accepted.
+here (checked by `tests/test_contract.py`), and only licenses that allow commercial use are accepted.
 
 | Component | License | Use |
 |---|---|---|
@@ -23,7 +23,7 @@ here (checked by `tests/test_contrato.py`), and only licenses that allow commerc
 
 ## Models (not in the repository)
 
-The repository contains no model weights: each user downloads them ([instalacao.md](instalacao.md)) and is
+The repository contains no model weights: each user downloads them ([installation.md](installation.md)) and is
 responsible for following their licenses.
 
 | Model | License | Use |

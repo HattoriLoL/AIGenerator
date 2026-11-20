@@ -2,9 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(tests/run.sh:*)",
-      "Bash(python3 tests/test_contrato.py:*)",
-      "Bash(python3 tests/test_puros.py:*)",
-      "Bash(python3 bin/verificar_segredos.py:*)"
+      "Bash(python3 tests/test_contract.py:*)",
+      "Bash(python3 tests/test_pure.py:*)",
+      "Bash(python3 bin/check_secrets.py:*)"
     ],
     "deny": [
       "Read(**/*.png)",
@@ -13,14 +13,15 @@
       "Read(**/*.webp)",
       "Read(**/*.gif)",
       "Bash(bin/aigen.sh:*)",
-      "Bash(bin/aigen_lote.sh:*)",
+      "Bash(bin/aigen_batch.sh:*)",
       "Bash(bin/aigen_web.sh:*)",
-      "Bash(bin/abrir_web.sh:*)",
+      "Bash(bin/open_web.sh:*)",
       "Bash(./bin/aigen.sh:*)",
-      "Bash(./bin/aigen_lote.sh:*)",
+      "Bash(./bin/aigen_batch.sh:*)",
       "Bash(./bin/aigen_web.sh:*)",
-      "Bash(.venv/bin/python -m aigen.gerar:*)",
-      "Bash(.venv/bin/python -m aigen.lote:*)",
+      "Bash(./bin/open_web.sh:*)",
+      "Bash(.venv/bin/python -m aigen.generate:*)",
+      "Bash(.venv/bin/python -m aigen.batch:*)",
       "Bash(.venv/bin/python -m aigen.web:*)"
     ]
   }

@@ -1,0 +1,7 @@
+# A character sheet (docs/sheets.md). The tags describe what does not change from one image to the next; the scene
+# goes in the request's prompt. An original character, only for the example.
+sheet_version = 1
+name = "Example"
+tags = "1girl, solo, long silver hair, straight hair, red eyes, black hoodie, white pleated skirt"
+negative = "monochrome, 3d"
+notes = "A generic character to try the flow; replace it with your own sheets in characters/."
