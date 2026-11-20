@@ -44,5 +44,8 @@ leaves out the prompts, the sheet and the LoRAs, and a failure is logged with th
 ([installation.md](installation.md)) and unticked otherwise; it is not a request field, so Read PNG never changes
 it. The form itself (what is typed in the page) is not written anywhere.
 
-The model is loaded on the first generation and stays loaded while the page runs. One generation runs at a time:
+The model is loaded on the first generation and stays loaded between generations. After `[web] unload_after`
+minutes without one (10 by default; `0` never, [installation.md](installation.md)) the interface lets go of it and
+frees the GPU memory, and the "Free GPU memory" button, below the result, does it at once; the next generation then
+loads the model again (it takes as long as the first one). One generation runs at a time:
 clicks made while one runs wait in Gradio's queue.

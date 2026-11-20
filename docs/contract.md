@@ -88,7 +88,9 @@ For an output `x.png` (or `x_001.png`, `x_002.png`, ... with `count` > 1):
     `positive`, `negative` (the final prompts) and `loras`. The web interface's "Read PNG" tab rebuilds the request
     from it.
 - **`x.aigen.json`**, the report: `format_version`, `aigen` (the version), `png`, `request`, `model` (the checkpoint
-  file name), `seconds`, `timings` (seconds per stage), `sheet` (the sheet's name or null), `prompt` (`positive` and
+  file name), `seconds`, `timings` (seconds per stage), `memory` (per stage: `vram_peak_mb`, the most GPU memory
+  allocated during the stage, `vram_reserved_mb`, what PyTorch keeps reserved at its end, and `ram_mb`, the process
+  RAM at its end; each null where it could not be measured, see [how-it-works.md](how-it-works.md), "Memory"), `sheet` (the sheet's name or null), `prompt` (`positive` and
   `negative`), `loras`, `generation`, when on, `hires` and `face_fix` (`found`: the faces found, `boxes`: their
   boxes, and `strength`), and `private` (false; true in private mode, below).
 

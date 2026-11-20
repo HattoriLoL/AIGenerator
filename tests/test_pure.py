@@ -14,8 +14,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from aigen import (config, contract, face, generate, hires, install, loras, metadata, model, output,  # noqa: E402
-                   prompts, sheets, stages, web)
+from aigen import (config, contract, face, generate, hires, install, loras, memory, metadata, model,  # noqa: E402
+                   output, prompts, sheets, stages, web)
 
 EXAMPLE_SHEET = os.path.join(ROOT, "examples", "characters", "example.toml")
 
@@ -211,6 +211,14 @@ class Privacy(unittest.TestCase):
         return output.build_report(_private_request(), ENTRIES, "a.png", "pony.safetensors", 12.5,
                                    {"prompts.stage": 0.1}, private=private)
 
+    def test_the_report_has_the_memory_of_each_stage(self):
+        used = {"generation.stage": memory.entry(9 * memory.MB, 10 * memory.MB, 3000)}
+        for private in (False, True):  # how much memory was used tells nothing about the image
+            r = output.build_report(_private_request(), ENTRIES, "a.png", "pony.safetensors", 1.0, {}, private, used)
+            self.assertEqual(r["memory"], {"generation.stage": {"vram_peak_mb": 9, "vram_reserved_mb": 10,
+                                                                "ram_mb": 3000}})
+        self.assertEqual(self.report(False)["memory"], {})
+
     def test_redact_request_removes_what_tells_what_the_image_is(self):
         r = _private_request()
         before = json.loads(json.dumps(r))
@@ -291,6 +299,39 @@ class Privacy(unittest.TestCase):
             self.assertEqual(text, "=== 2026-01-02T03:04:05\nTraceback ...\nError: x\n")
 
 
+class Memory(unittest.TestCase):
+    """aigen/memory.py and the session's memory (no torch here: the GPU numbers are None)."""
+
+    def test_reading_and_entries(self):
+        self.assertEqual(memory.parse_status("Name:\tpython\nVmRSS:\t  204800 kB\nVmSwap:\t 0 kB\n"), 200)
+        self.assertIsNone(memory.parse_status("Name:\tpython\n"))
+        self.assertEqual(memory.entry(3 * memory.MB, 5.6 * memory.MB, 700),
+                         {"vram_peak_mb": 3, "vram_reserved_mb": 6, "ram_mb": 700})
+        self.assertEqual(memory.entry(None, None, None),
+                         {"vram_peak_mb": None, "vram_reserved_mb": None, "ram_mb": None})
+        ram = memory.ram_mb()
+        self.assertTrue(ram is None or ram > 0)
+        memory.start()
+        self.assertEqual(set(memory.measure()), {"vram_peak_mb", "vram_reserved_mb", "ram_mb"})
+        memory.free()
+
+    def test_the_session_lets_go_of_the_model(self):
+        s = model.Session(config.Config({"checkpoint": "x"}))
+        self.assertFalse(s.loaded)
+        s._pipe, s.loaded_loras = object(), ("x",)
+        self.assertTrue(s.loaded)
+        s.release()
+        self.assertEqual((s.loaded, s.loaded_loras), (False, ()))
+
+    def test_the_web_lets_go_of_the_idle_model(self):
+        self.assertTrue(web.should_unload(True, 1000.0, 1000.0 + 600, 10))
+        self.assertTrue(web.should_unload(True, 1000.0, 1000.0 + 599.5, 10), "a second early counts")
+        self.assertFalse(web.should_unload(True, 1000.0, 1000.0 + 300, 10))
+        self.assertFalse(web.should_unload(False, 1000.0, 1000.0 + 6000, 10), "not loaded")
+        self.assertFalse(web.should_unload(True, 1000.0, 1000.0 + 6000, 0), "0: never")
+        self.assertFalse(web.should_unload(True, None, 6000.0, 10), "no generation yet")
+
+
 class Config(unittest.TestCase):
     def test_defaults_local_and_variable(self):
         with tempfile.TemporaryDirectory() as root:
@@ -322,6 +363,19 @@ class Config(unittest.TestCase):
                 with self.assertRaises(contract.RequestError) as c:
                     config.read(root, {"AIGEN_SAVE_PROMPTS": bad})
                 self.assertIn("save_prompts", str(c.exception))
+
+    def test_unload_after(self):
+        with tempfile.TemporaryDirectory() as root:
+            open(os.path.join(root, "config.ini"), "w").close()
+            self.assertEqual(config.read(root, {}).unload_after, 10)
+            self.assertEqual(config.read(root, {"AIGEN_UNLOAD_AFTER": "0"}).unload_after, 0)
+            with open(os.path.join(root, "config.local.ini"), "w", encoding="utf-8") as f:
+                f.write("[web]\nunload_after = 30\n")
+            self.assertEqual(config.read(root, {}).unload_after, 30)
+            for bad in ("-1", "ten", ""):
+                with self.assertRaises(contract.RequestError) as e:
+                    config.read(root, {"AIGEN_UNLOAD_AFTER": bad})
+                self.assertIn("unload_after", str(e.exception))
 
     def test_the_repository_config_ini_has_no_machine_path(self):
         c = config.read(ROOT, {})

@@ -51,11 +51,26 @@ the GPU.
 
 With `count` > 1, the sequence runs once per image, with consecutive seeds, on the same session.
 
+## Memory
+
+- **What stays loaded.** The session keeps the checkpoint (about 7 GB in fp16: the UNet 5.1 GB, the two text encoders
+  1.6 GB, the VAE 0.2 GB), compel, the upscaler and the LoRAs from one image to the next, so only the first image of
+  a run waits for the model. The command line lets go of everything when it ends; batch mode at the end of the
+  folder; the web interface after `[web] unload_after` minutes without a generation (10 by default; 0 never) or with
+  its "Free GPU memory" button ([web.md](web.md)), and then the next generation loads the model again.
+- **After each image** (made or failed), `generate.run` gives back what is no longer used (`memory.free`): the
+  Python objects in cycles, the GPU memory PyTorch keeps in its cache after the peaks of the generation, the VAE
+  decode and the hires fix, and, on Linux, the freed heap (glibc's `malloc_trim`, also called after the checkpoint
+  is loaded, since it goes through RAM on its way to the GPU). Between images of the same run only the model stays.
+- **Measured in the report.** Each stage's `memory` entry ([contract.md](contract.md)) has the GPU peak during the
+  stage, what PyTorch keeps reserved at its end and the process RAM (Linux and Windows). The GPU numbers are null for
+  the request check, which runs before torch is imported, and without a GPU.
+
 ## The stages in the code
 
 The table below is the one the stages declare (with hires fix and face fix on), checked by `tests/test_contract.py`.
-The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `private`, `t_start`, `timings`) come with the
-job.
+The names in `stages.BASE` (`request`, `output`, `session`, `cfg`, `private`, `t_start`, `timings`, `memory`) come
+with the job.
 
 | Stage | Reads | Writes |
 |---|---|---|
@@ -66,7 +81,7 @@ job.
 | `generation.stage` | `active_loras`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `image` |
 | `hires.stage` | `active_loras`, `image`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `image` |
 | `face.stage` | `active_loras`, `image`, `negative`, `pipe`, `positive`, `report`, `request`, `session` | `faces`, `image` |
-| `output.stage` | `active_loras`, `cfg`, `image`, `negative`, `output`, `positive`, `private`, `report`, `request` | `files` |
+| `output.stage` | `active_loras`, `cfg`, `image`, `memory`, `negative`, `output`, `positive`, `private`, `report`, `request`, `timings` | `files` |
 
 ## Modules
 
@@ -84,6 +99,7 @@ job.
 | `loras.py` | LoRA files and the `name:weight` list | only the stage |
 | `metadata.py` | The PNG text chunks, and what private mode leaves out | no (pure) |
 | `model.py` | The session: pipeline, compel, upscaler, face detector, samplers | yes, inside its functions |
+| `memory.py` | The memory measured in the report and `free` (the GPU cache, the freed heap) | no (reads torch only when already imported) |
 | `generation.py`, `hires.py`, `face.py`, `output.py` | The GPU stages and the output | yes, inside the stages |
 
 No module imports torch, diffusers, Gradio or another heavy library at the top of the file (checked by

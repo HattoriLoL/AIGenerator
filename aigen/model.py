@@ -5,7 +5,7 @@ torch and diffusers are only imported inside the functions (the module imports w
 """
 import importlib.util
 
-from aigen import contract, stages
+from aigen import contract, memory, stages
 
 # the request's sampler: (diffusers class, extra options). The names are those of contract.SAMPLERS.
 SCHEDULERS = {
@@ -54,10 +54,7 @@ def prepare_vae(pipe, width, height):
 
 def empty_cache():
     """Gives back to the GPU the memory torch kept and no longer uses (after a failure, for example)."""
-    if importlib.util.find_spec("torch") is not None:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    memory.free()
 
 
 def generator(seed):
@@ -81,6 +78,11 @@ class Session:
         self.loaded_loras = ()
         self._pipe = self._path = self._scheduler_config = self._dtype = None
         self._compel = self._upscaler = self._detector = None
+
+    @property
+    def loaded(self):
+        """Whether the checkpoint is loaded."""
+        return self._pipe is not None
 
     def pipeline(self, sampler):
         """The text-to-image pipeline of the configured checkpoint, with the requested sampler and the VAE in the right
@@ -112,6 +114,7 @@ class Session:
         pipe.set_progress_bar_config(disable=True)
         self._pipe, self._path, self._dtype = pipe, self.cfg.checkpoint, dtype
         self._scheduler_config = pipe.scheduler.config
+        memory.trim()  # the checkpoint went through RAM on its way to the GPU
 
     def derived(self, cls):
         """A diffusers pipeline (img2img, inpaint) that uses the same weights already loaded, with the current
@@ -149,11 +152,12 @@ class Session:
         return self._detector
 
     def release(self):
-        """Lets go of what is on the GPU (when switching checkpoints)."""
+        """Lets go of the model, compel and the upscaler and gives their memory back, on the GPU and in RAM (when
+        switching checkpoints, and when the web interface stays idle)."""
         self._pipe = self._path = self._scheduler_config = self._dtype = None
         self._compel = self._upscaler = None
         self.loaded_loras = ()
-        empty_cache()
+        memory.free()
 
 
 @stages.declare(reads=("request", "session"), writes=("pipe",))
